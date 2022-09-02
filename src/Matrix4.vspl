@@ -1,0 +1,192 @@
+list Matrix4;
+listoffsets Matrix4 16 {x: 4, y:8, z:12};
+
+namespace M4fn "Matrix4 | " {
+	variable free;
+	function new() {
+		if(free > -1) {
+			OUTPUT = free;
+			free = Matrix4[free]#1;
+			Matrix4[OUTPUT]#1 = 1;
+			Matrix4[OUTPUT]#2 = 0;
+			Matrix4[OUTPUT]#3 = 0;
+			Matrix4[OUTPUT]#4 = 0;
+			Matrix4[OUTPUT]#5 = 0;
+			Matrix4[OUTPUT]#6 = 1;
+			Matrix4[OUTPUT]#7 = 0;
+			Matrix4[OUTPUT]#8 = 0;
+			Matrix4[OUTPUT]#9 = 0;
+			Matrix4[OUTPUT]#10 = 0;
+			Matrix4[OUTPUT]#11 = 1;
+			Matrix4[OUTPUT]#12 = 0;
+		} else {
+			OUTPUT = Matrix4.length;
+			Matrix4.push(1);
+			Matrix4.push(0);
+			Matrix4.push(0);
+			Matrix4.push(0);
+			Matrix4.push(0);
+			Matrix4.push(1);
+			Matrix4.push(0);
+			Matrix4.push(0);
+			Matrix4.push(0);
+			Matrix4.push(0);
+			Matrix4.push(1);
+			Matrix4.push(0);
+		}
+	}
+	function delete(elem) {
+		Matrix4[elem]#1 = free;
+		free = elem;
+	}
+
+	function identity(m1) {
+		M4fn.set(m1, 1,0,0,0, 0,1,0,0, 0,0,1,0);
+	}
+	function set(m1, a,b,c,x, d,e,f,y, g,h,i,z) {
+		Matrix4[m1]#1  = a;
+		Matrix4[m1]#2  = b;
+		Matrix4[m1]#3  = c;
+		Matrix4[m1]#4  = x;
+		Matrix4[m1]#5  = d;
+		Matrix4[m1]#6  = e;
+		Matrix4[m1]#7  = f;
+		Matrix4[m1]#8  = y;
+		Matrix4[m1]#9  = g;
+		Matrix4[m1]#10 = h;
+		Matrix4[m1]#11 = i;
+		Matrix4[m1]#12 = z;
+	}
+	function transform(m1, v1, v2) {
+		Vector3[v2]#x = Vector3[v1]#x * Matrix4[m1]#1 + Vector3[v1]#y * Matrix4[m1]#2  + Vector3[v1]#z * Matrix4[m1]#3  + Matrix4[m1]#4;
+		Vector3[v2]#y = Vector3[v1]#x * Matrix4[m1]#5 + Vector3[v1]#y * Matrix4[m1]#6  + Vector3[v1]#z * Matrix4[m1]#7  + Matrix4[m1]#8;
+		Vector3[v2]#z = Vector3[v1]#x * Matrix4[m1]#9 + Vector3[v1]#y * Matrix4[m1]#10 + Vector3[v1]#z * Matrix4[m1]#11 + Matrix4[m1]#12;
+	}
+	function transformInverse(m1, v1, v2) {
+		let x = Vector3[v1]#x - Matrix4[m1]#4;
+		let y = Vector3[v1]#y - Matrix4[m1]#8;
+		let z = Vector3[v1]#z - Matrix4[m1]#12;
+		Vector3[v2]#x = x * Matrix4[m1]#1 + y * Matrix4[m1]#5 + z * Matrix4[m1]#9;
+		Vector3[v2]#y = x * Matrix4[m1]#2 + y * Matrix4[m1]#6 + z * Matrix4[m1]#10;
+		Vector3[v2]#z = x * Matrix4[m1]#3 + y * Matrix4[m1]#7 + z * Matrix4[m1]#11;
+	}
+	function transformDirection(m1, v1, v2) {
+		Vector3[v2]#x = Vector3[v1]#x * Matrix4[m1]#1 + Vector3[v1]#y * Matrix4[m1]#2  + Vector3[v1]#z * Matrix4[m1]#3;
+		Vector3[v2]#y = Vector3[v1]#x * Matrix4[m1]#5 + Vector3[v1]#y * Matrix4[m1]#6  + Vector3[v1]#z * Matrix4[m1]#7;
+		Vector3[v2]#z = Vector3[v1]#x * Matrix4[m1]#9 + Vector3[v1]#y * Matrix4[m1]#10 + Vector3[v1]#z * Matrix4[m1]#11;
+	}
+	function transformInverseDirection(m1, v1, v2) {
+		Vector3[v2]#x = Vector3[v1]#x * Matrix4[m1]#1 + Vector3[v1]#y * Matrix4[m1]#5 + Vector3[v1]#z * Matrix4[m1]#9;
+		Vector3[v2]#y = Vector3[v1]#x * Matrix4[m1]#2 + Vector3[v1]#y * Matrix4[m1]#6 + Vector3[v1]#z * Matrix4[m1]#10;
+		Vector3[v2]#z = Vector3[v1]#x * Matrix4[m1]#3 + Vector3[v1]#y * Matrix4[m1]#7 + Vector3[v1]#z * Matrix4[m1]#11;
+	}
+	function mulMatrix4(m1, m2, m3) {
+		const a = Matrix4[m1]#1;
+		const b = Matrix4[m2]#1;
+		M4fn.set(m3,a#0*b#0 + a#1*b#4 + a#2*b#8,
+					a#0*b#1 + a#1*b#5 + a#2*b#9,
+					a#0*b#2 + a#1*b#6 + a#2*b#10,
+					a#0*b#3 + a#1*b#7 + a#2*b#11 + a#3,
+
+					a#4*b#0 + a#5*b#4 + a#6*b#8,
+					a#4*b#1 + a#5*b#5 + a#6*b#9,
+					a#4*b#2 + a#5*b#6 + a#6*b#10,
+					a#4*b#3 + a#5*b#7 + a#6*b#11 + a#7,
+
+					a#8*b#0 + a#9*b#4 + a#10*b#8,
+					a#8*b#1 + a#9*b#5 + a#10*b#9,
+					a#8*b#2 + a#9*b#6 + a#10*b#10,
+					a#8*b#3 + a#9*b#7 + a#10*b#11 + a#11);
+	}
+	function getDeterminant(matrix) {
+		const data = Matrix4[matrix]#1;
+
+		OUTPUT = -data#8*data#5*data#2+
+				  data#4*data#9*data#2+
+				  data#8*data#1*data#6-
+				  data#0*data#9*data#6-
+				  data#4*data#1*data#10+
+				  data#0*data#5*data#10;
+	}
+	function setInverse(m1, m2) {
+		const m = Matrix4[m1]#1;
+		const out = Matrix4[m2]#1;
+		M4fn.getDeterminant(m1);
+		if(OUTPUT == 0) {
+			return;
+		}
+		OUTPUT = 1 / OUTPUT;
+
+		out#0  = (-m#9*m#6+m#5*m#10)*OUTPUT;
+		out#4  = ( m#8*m#6-m#4*m#10)*OUTPUT;
+		out#8  = (-m#8*m#5+m#4*m# 9)*OUTPUT;
+
+		out#1  = ( m#9*m#2-m#1*m#10)*OUTPUT;
+		out#5  = (-m#8*m#2+m#0*m#10)*OUTPUT;
+		out#9  = ( m#8*m#1-m#0*m# 9)*OUTPUT;
+
+		out#2  = (-m#5*m#2+m#1*m#6)*OUTPUT;
+		out#6  = ( m#4*m#2-m#0*m#6)*OUTPUT;
+		out#10 = (-m#4*m#1+m#0*m#5)*OUTPUT;
+
+		out#3 = (m#9*m#6*m#3
+				 -m#5*m#10*m#3
+				 -m#9*m#2*m#7
+				 +m#1*m#10*m#7
+				 +m#5*m#2*m#11
+				 -m#1*m#6*m#11)*OUTPUT;
+		out#7 = (-m#8*m#6*m#3
+				 +m#4*m#10*m#3
+				 +m#8*m#2*m#7
+				 -m#0*m#10*m#7
+				 -m#4*m#2*m#11
+				 +m#0*m#6*m#11)*OUTPUT;
+		out#11 = (m#8*m#5*m#3
+				 -m#4*m#9*m#3
+				 -m#8*m#1*m#7
+				 +m#0*m#9*m#7
+				 +m#4*m#1*m#11
+				 -m#0*m#5*m#11)*OUTPUT;
+	}
+	function setOrientation(q1, v1, m1) {
+		const q = Quaternion[q1];
+		const vec = Vector3[v1];
+		Matrix4[m1]#1  = 1 - (2*q#j*q#j + 2*q#k*q#k);
+		Matrix4[m1]#2  = 2*q#i*q#j + 2*q#k*q#r;
+		Matrix4[m1]#3  = 2*q#i*q#k - 2*q#j*q#r;
+		Matrix4[m1]#4  = vec#x;
+		Matrix4[m1]#5  = 2*q#i*q#j - 2*q#k*q#r;
+		Matrix4[m1]#6  = 1 - (2*q#i*q#i + 2*q#k*q#k);
+		Matrix4[m1]#7  = 2*q#j*q#k + 2*q#i*q#r;
+		Matrix4[m1]#8  = vec#y;
+		Matrix4[m1]#9  = 2*q#i*q#k + 2*q#j*q#r;
+		Matrix4[m1]#10 = 2*q#j*q#k - 2*q#i*q#r;
+		Matrix4[m1]#11 = 1 - (2*q#i*q#i + 2*q#j*q#j);
+		Matrix4[m1]#12 = vec#z;
+	}
+	function getOffset(mat, vec) {
+		//TODO get rid of
+		Vector3[vec]#x = Matrix4[mat]#4;
+		Vector3[vec]#y = Matrix4[mat]#8;
+		Vector3[vec]#z = Matrix4[mat]#12;
+	}
+	function getAxisVector(mat, i, vec) {
+		Vector3[vec]#x = Matrix4[mat+i]#1;
+		Vector3[vec]#y = Matrix4[mat+i]#5;
+		Vector3[vec]#z = Matrix4[mat+i]#9;
+	}
+	function copy(m1, m2) {
+		Matrix4[m2]#1  = Matrix4[m1]#1;
+		Matrix4[m2]#2  = Matrix4[m1]#2;
+		Matrix4[m2]#3  = Matrix4[m1]#3;
+		Matrix4[m2]#4  = Matrix4[m1]#4;
+		Matrix4[m2]#5  = Matrix4[m1]#5;
+		Matrix4[m2]#6  = Matrix4[m1]#6;
+		Matrix4[m2]#7  = Matrix4[m1]#7;
+		Matrix4[m2]#8  = Matrix4[m1]#8;
+		Matrix4[m2]#9  = Matrix4[m1]#9;
+		Matrix4[m2]#10 = Matrix4[m1]#10;
+		Matrix4[m2]#11 = Matrix4[m1]#11;
+		Matrix4[m2]#12 = Matrix4[m1]#12;
+	}
+}

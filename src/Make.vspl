@@ -1,0 +1,173 @@
+namespace Make {
+	function plane(nx, ny, nz, offset) {
+		RigidBody.new();
+		let body = OUTPUT;
+		RigidBody.acceleration[body] = V3fn.zero;
+		RigidBody.inverseMass[body] = 0;
+		M3fn.set(RigidBody.inverseInertiaTensor[body], 0,0,0, 0,0,0, 0,0,0);
+		RigidBody.calculateDerivedData(body);
+		V3fn.new();
+		V3fn.set(OUTPUT, nx, ny, nz);
+		Collider.new(body, 0, OUTPUT, offset, -1);
+		RigidBody.collider[body] = OUTPUT;
+		RigidBody.calculateInertiaTensor(body);
+		World.bodies.push(body);
+		OUTPUT = body;
+	}
+	function box(x, y, z, dx, dy, dz, mass) {
+		RigidBody.new();
+		let body = OUTPUT;
+		V3fn.set(RigidBody.position[body], x, y, z);
+		if(mass < 0) {
+			RigidBody.inverseMass[body] = 1 / (dx*dy*dz);
+		} else {
+			RigidBody.inverseMass[body] = 1 / mass;
+		}
+		RigidBody.calculateDerivedData(body);
+		V3fn.new();
+		V3fn.set(OUTPUT, dx/2, dy/2, dz/2);
+		Collider.new(body, 1, OUTPUT, 0, -1);
+		RigidBody.collider[body] = OUTPUT;
+		RigidBody.calculateInertiaTensor(body);
+		World.bodies.push(body);
+		OUTPUT = body;
+	}
+	function sphere(x, y, z, r, mass) {
+		RigidBody.new();
+		let body = OUTPUT;
+		V3fn.set(RigidBody.position[body], x, y, z);
+		if(mass < 0) {
+			RigidBody.inverseMass[body] = 1 / (Math.PI*4/3*r*r*r);
+		} else {
+			RigidBody.inverseMass[body] = 1 / mass;
+		}
+		RigidBody.calculateDerivedData(body);
+		Collider.new(body, 2, r, 0, -1);
+		RigidBody.collider[body] = OUTPUT;
+		RigidBody.calculateInertiaTensor(body);
+		World.bodies.push(body);
+		OUTPUT = body;
+	}
+	function capsule(x, y, z, r, hs, mass) {
+		RigidBody.new();
+		let body = OUTPUT;
+		V3fn.set(RigidBody.position[body], x, y, z);
+		if(mass < 0) {
+			RigidBody.inverseMass[body] = 1 / (Math.PI*r*r*(4/3*r + hs));
+		} else {
+			RigidBody.inverseMass[body] = 1 / mass;
+		}
+		RigidBody.calculateDerivedData(body);
+		Collider.new(body, 3, r, hs, -1);
+		RigidBody.collider[body] = OUTPUT;
+		RigidBody.calculateInertiaTensor(body);
+		World.bodies.push(body);
+		OUTPUT = body;
+	}
+	function ballAndSocketJoint(b1, b2, point1, point2) {
+		ConstraintGenerators.toInsert.push(b1, b2, point1, point2);
+		ConstraintGenerators.insert(ConstraintGenerators.BALLANDSOCKETJOINT);
+	}
+	function centerDistanceJoint(b1, b2, length) {
+		ConstraintGenerators.toInsert.push(b1, b2, length);
+		ConstraintGenerators.insert(ConstraintGenerators.CENTERDISTANCEJOINT);
+	}
+	function pointDistanceJoint(b1, b2, point1, point2, length) {
+		ConstraintGenerators.toInsert.push(b1, b2, point1, point2, length);
+		ConstraintGenerators.insert(ConstraintGenerators.CENTERDISTANCEJOINT);
+	}
+
+	function sliderJoint(b1, b2, point1, point2, axis) {
+		sal Quaternion a, b;
+		QTfn.inverse(RigidBody.orientation[b1], a);
+		QTfn.mul(RigidBody.orientation[b1], a, b);
+		QTfn.new();
+		QTfn.inverse(b, OUTPUT);
+		ConstraintGenerators.toInsert.push(b1, b2, point1, point2, axis, OUTPUT, 1, -1, 0, 0, 0, 0);
+		ConstraintGenerators.insert(ConstraintGenerators.SLIDERJOINT);
+	}
+
+	function hingeJoint(b1, b2, point1, point2, axis1, axis2) {
+		ConstraintGenerators.toInsert.push(b1, b2, point1, point2, axis1, axis2, 1, -1, 0, 0);
+		ConstraintGenerators.insert(ConstraintGenerators.HINGEJOINT);
+	}
+
+	function universalJoint(b1, b2, point1, point2, axis1, axis2) {
+		ConstraintGenerators.toInsert.push(b1, b2, point1, point2, axis1, axis2, 1, -1, 1, -1, 0, 0, 0, 0);
+		ConstraintGenerators.insert(ConstraintGenerators.UNIVERSALJOINT);
+	}
+
+	function veryUniversalJoint(b1, b2, point1, point2, axis1, axis2) {
+		ConstraintGenerators.toInsert.push(b1, b2, point1, point2, axis1, axis2, 1, -1, 1, -1, 1, -1, 0, 0, 0, 0, 0, 0);
+		ConstraintGenerators.insert(ConstraintGenerators.VERYUNIVERSALJOINT);
+	}
+
+	function sharedMotionJoint(b1, b2, vel1, rot1, vel2, rot2) {
+		ConstraintGenerators.toInsert.push(b1, b2, vel1, rot1, vel2, rot2);
+		ConstraintGenerators.insert(ConstraintGenerators.SHAREDMOTIONJOINT);
+	}
+
+	function limit(constraint, index, min, max) {
+		const all = ConstraintGenerators.all;
+		let indexLimit = -1;
+		if(all[constraint] == ConstraintGenerators.SLIDERJOINT) {
+			indexLimit = 1;
+		}
+		if(all[constraint] == ConstraintGenerators.HINGEJOINT) {
+			indexLimit = 1;
+		}
+		if(all[constraint] == ConstraintGenerators.UNIVERSALJOINT) {
+			indexLimit = 2;
+		}
+		if(all[constraint] == ConstraintGenerators.VERYUNIVERSALJOINT) {
+			indexLimit = 3;
+		}
+		if(index > -1 && index < indexLimit) {
+			let pos = constraint + 8 + index * 2;
+			all[pos]#0 = min;
+			all[pos]#1 = max;
+		}
+	}
+
+	function motor(constraint, index, tragetVelocity, forceLimit) {
+		const all = ConstraintGenerators.all;
+		let indexLimit = -1;
+		if(all[constraint] == ConstraintGenerators.SLIDERJOINT) {
+			indexLimit = 1;
+		}
+		if(all[constraint] == ConstraintGenerators.HINGEJOINT) {
+			indexLimit = 1;
+		}
+		if(all[constraint] == ConstraintGenerators.UNIVERSALJOINT) {
+			indexLimit = 2;
+		}
+		if(all[constraint] == ConstraintGenerators.VERYUNIVERSALJOINT) {
+			indexLimit = 3;
+		}
+		if(index > -1 && index < indexLimit) {
+			let pos = constraint + 8 + (indexLimit + index) * 2;
+			all[pos]#0 = tragetVelocity;
+			all[pos]#1 = forceLimit;
+		}
+	}
+
+	function globalPullFGen(body, force) {
+		ForceGenerators.toInsert.push(body, force);
+		ForceGenerators.insert(ForceGenerators.GLOBALPULL);
+	}
+
+	function localPullFGen(body, force) {
+		ForceGenerators.toInsert.push(body, force);
+		ForceGenerators.insert(ForceGenerators.LOCALPULL);
+	}
+
+	function spring(body1, body2, point1, point2, power, restLength, side, double) {
+		ForceGenerators.toInsert.push(body1, body2, point1, point2, power, restLength, side, double);
+		ForceGenerators.insert(ForceGenerators.SPRING);
+	}
+
+	function buoyancyFGen(body, point, volume, halfHeight, liquidHeight, liquidDensity) {
+		ForceGenerators.toInsert.push(body, point, volume, halfHeight, liquidHeight, liquidDensity);
+		ForceGenerators.insert(ForceGenerators.BUOYANCY);
+	}
+}

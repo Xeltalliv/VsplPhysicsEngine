@@ -1,0 +1,15 @@
+namespace Contact {
+	function add(b1, b2, point1, point2, normal) {
+		sal Vector3 tang1, tang2;
+		V3fn.tangents(normal, tang1, tang2);
+		PenetrationConstraint.add(b1, b2, point1, point2, normal, CollisionDetector.restitution, 0);
+
+		// Piramid friction
+		//let penConstr = Constraint.lambdaQ.length;
+		//FrictionConstraint.add(b1, b2, point1, point2, tang1, CollisionDetector.friction, penConstr);
+		//FrictionConstraint.add(b1, b2, point1, point2, tang2, CollisionDetector.friction, penConstr);
+
+		// Cone friction
+		ConeFrictionConstraint.add(b1, b2, point1, point2, tang1, tang2, CollisionDetector.friction, Constraint.lambdaQ.length);
+	}
+}

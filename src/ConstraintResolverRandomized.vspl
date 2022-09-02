@@ -1,0 +1,109 @@
+namespace ConstraintResolver {
+	function resolveConstraintsRandomized() {
+		if(Constraint.size.length == 0) return;
+
+		// If you have position constraint, take time derivative to get velocity constraint
+		// Split: Velocity constraint = J * v = 0
+		// J - mostly horizontal matrix called Jacobian filled with horizontal vectors
+		// v - vertical matrix of (v1 w1 v2 w2) where v1, w1, v2, w2 - are vertical vectors
+		// J * v = 0 does no work
+		// J * v + b = 0 can do work (restitution, position correction, motors, etc.)
+		// v above here is actually v_next
+		// We want J * v_next + b = 0
+		// v_last is last velocity after solver. We don't care about it here
+		// v_current = v_last + M^-1 * F_external * deltaTime   this is what we need
+		// lambda - is called Lagrange multiplier
+		// lambda' = lambda * deltaTime
+		// lambda' = - K^-1 * (J * v_current + b)
+		// F_constr = J^T * lambda = J^T * lambda' / deltaTime
+		// P_constr = F_constr * deltaTime = J^T * lambda' / deltaTime * deltaTime = J^T * lambda'   <----!!!!!
+		// P_constr - corrective impulse of constraint
+		// K = J * M^-1 * J^T  (it remains the same in every iteration, can be precomputed once) (it is NxN where N is amount of DOF removed)
+		// M is diagonal matrix filled with inverse mass identity matrices and inverse inertia tensors
+
+		lst all = [];
+		for(let i; Constraint.size.length) {
+			all.push(i);
+		}
+
+		repeat(iterations) {
+			let unsolved = Constraint.size.length;
+			repeat(Constraint.size.length) {
+				let index = Math.random(1, unsolved);
+				let i = all[index];
+				all[index] = all[unsolved];
+				all[unsolved] = i;
+				unsolved -= 1;
+
+				let b1 = Constraint.b1[i];
+				let b2 = Constraint.b2[i];
+				let ptr = Constraint.ptr[i];
+				let invK = Constraint.invKPtr[i];
+				const J = Constraint.J;
+				let N = Constraint.size[i];
+
+				//Getting linear and angualr velocities of bodies
+				let v1 = RigidBody.velocity[b1];
+				let w1 = RigidBody.rotation[b1];
+				let v2 = RigidBody.velocity[b2];
+				let w2 = RigidBody.rotation[b2];
+
+
+				//Calculating J * v + b    (result is vertical vector)
+				// J is mostly horizontal matrix with horizontal matricies inside
+				// v is always vertical matrix filled with vertical vector elements
+				lst Jv_b = [];
+
+				let j = ptr;
+				repeat(N) {
+					let j4 = j * 4;
+					let OUTPUT_ACCUM = 0;
+					V3fn.dot(J[j4]#1, v1);
+					OUTPUT_ACCUM += OUTPUT;
+					V3fn.dot(J[j4]#2, w1);
+					OUTPUT_ACCUM += OUTPUT;
+					V3fn.dot(J[j4]#3, v2);
+					OUTPUT_ACCUM += OUTPUT;
+					V3fn.dot(J[j4]#4, w2);
+					OUTPUT_ACCUM += OUTPUT;
+					OUTPUT_ACCUM += Constraint.B[j+1];
+					Jv_b.push(OUTPUT_ACCUM);
+					j += 1;
+				}
+
+				//What we are supposted to do:
+				// lambda' = - K^-1 * (J * v_current + b)
+				// P = J^T * lambda'
+				//What we really do:
+				// lambdaQ = - invK * Jv_b    (result is vertical matrix)
+				// v1 += J[a][0] * lambdaQ[a]
+				// w1 += J[a][1] * lambdaQ[a]
+				// v2 += J[a][2] * lambdaQ[a]
+				// w2 += J[a][3] * lambdaQ[a]
+				unclamped = [];
+				backups = [];
+				for(let a; N) {
+					let sum = 0;
+					for(let b; N) {
+						sum += Constraint.invKData[invK+(a-1)*N+b] * Jv_b[b];
+					}
+					backups.push(Constraint.lambdaQ[ptr+a]);
+					unclamped.push(Constraint.lambdaQ[ptr+a] - sum);
+				}
+				Constraint.clampLambdas(i, ptr);
+				let aa = ptr*4;
+				for(let a; N) {
+					sal Vector3 tempVec;
+					let difference = Constraint.lambdaQ[ptr+a] - backups[a];
+					V3fn.addScaled(v1, J[aa]#1, difference * RigidBody.inverseMass[b1], v1);
+					M3fn.transform(RigidBody.inverseInertiaTensorWorld[b1], J[aa]#2, tempVec);
+					V3fn.addScaled(w1, tempVec, difference, w1);
+					V3fn.addScaled(v2, J[aa]#3, difference * RigidBody.inverseMass[b2], v2);
+					M3fn.transform(RigidBody.inverseInertiaTensorWorld[b2], J[aa]#4, tempVec);
+					V3fn.addScaled(w2, tempVec, difference, w2);
+					aa += 4;
+				}
+			}
+		}
+	}
+}

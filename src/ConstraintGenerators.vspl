@@ -1,0 +1,239 @@
+namespace ConstraintGenerators {
+	list all; // List of all current constraint generators
+	list toInsert;
+
+	const BALLANDSOCKETJOINT = 0;
+	const POINTDISTANCEJOINT = 1;
+	const CENTERDISTANCEJOINT = 2;
+	const SLIDERJOINT = 3;
+	const HINGEJOINT = 4;
+	const UNIVERSALJOINT = 5;
+	const VERYUNIVERSALJOINT = 6;
+	const SHAREDMOTIONJOINT = 7;
+
+	inline function reset() {
+		ConstraintGenerators.all = [infinity, 0];
+	}
+
+	function insert(type) {
+		const i = OUTPUT;
+		i = 1;
+		until(all[i] > type) {
+			i += all[i]#1;
+		}
+		let length = toInsert.length;
+		repeat(length) {
+			all.insert(i, toInsert["last"]);
+			toInsert.delete("last");
+		}
+		all.insert(i, 2 + length);
+		all.insert(i, type);
+	}
+
+	function delete(index) {
+		repeat(all[index]#1) {
+			all.delete(index);
+		}
+	}
+
+	function run() {
+		let i = 1;
+		until(all[i] > BALLANDSOCKETJOINT) { // body1, body2, point1, point2
+			sal Vector3 pt1, pt2;
+			RigidBody.getPointInWorldSpace(all[i]#2, all[i]#4, pt1);
+			RigidBody.getPointInWorldSpace(all[i]#3, all[i]#5, pt2);
+			LockPointTranslationsConstraint.add(all[i]#2, all[i]#3, pt1, pt2);
+			i += 6;
+		}
+		until(all[i] > POINTDISTANCEJOINT) { // body1, body2, point1, point2, length
+			sal Vector3 pt1, pt2;
+			RigidBody.getPointInWorldSpace(all[i]#2, all[i]#4, pt1);
+			RigidBody.getPointInWorldSpace(all[i]#3, all[i]#5, pt2);
+			PointDistanceConstraint.add(all[i]#2, all[i]#3, pt1, pt2, all[i]#6);
+			i += 7;
+		}
+		until(all[i] > CENTERDISTANCEJOINT) { // body1, body2, length
+			CenterDistanceConstraint.add(all[i]#2, all[i]#3, all[i]#4);
+			i += 5;
+		}
+		until(all[i] > SLIDERJOINT) { // body1, body2, point1, point2, axis, invOrigDiff, min, max, targetVelocity, forceLimit, restitution, friction
+			sal Vector3 pt1, pt2, axis, tang1, tang2, ptDiff;
+			const b1 = all[i]#2;
+			const b2 = all[i]#3;
+			M4fn.transformDirection(RigidBody.transformMatrix[b1], all[i]#6, axis);
+			V3fn.tangents(axis, tang1, tang2);
+			RigidBody.getPointInWorldSpace(b1, all[i]#4, pt1);
+			RigidBody.getPointInWorldSpace(b2, all[i]#5, pt2);
+			SliderTranslationConstraint.add(b1, b2, pt1, pt2, tang1, tang2);
+			LockRotationConstraint.add(b1, b2, all[i]#7);
+			if(all[i]#10 > 0) {
+				MotorAlongAxisConstraint.add(b1, b2, axis, all[i]#10, all[i]#11);
+			}
+			if(all[i]#8 <= all[i]#9) {
+				V3fn.sub(pt2, pt1, ptDiff);
+				V3fn.dot(ptDiff, axis);
+				let val = OUTPUT;
+				if(val < all[i]#8) {
+					PenetrationConstraint.add(b1, b2, pt1, pt2, axis, all[i]#12, all[i]#8);
+				}
+				if(val > all[i]#9) {
+					V3fn.inverse(axis, axis);
+					PenetrationConstraint.add(b1, b2, pt1, pt2, axis, all[i]#12, -all[i]#9);
+				}
+			}
+			//if(all[i]#10) {} // TODO: friction
+			i += 14;
+		}
+		until(all[i] > HINGEJOINT) { // body1, body2, point1, point2, axis1, axis2, min, max, targetVelocity, forceLimit
+			sal Vector3 pt1, pt2, axis1, axis2;
+			const b1 = all[i]#2;
+			const b2 = all[i]#3;
+			M4fn.transformDirection(RigidBody.transformMatrix[b1], all[i]#6, axis1);
+			M4fn.transformDirection(RigidBody.transformMatrix[b2], all[i]#7, axis2);
+			RigidBody.getPointInWorldSpace(b1, all[i]#4, pt1);
+			RigidBody.getPointInWorldSpace(b2, all[i]#5, pt2);
+			LockPointTranslationsConstraint.add(b1, b2, pt1, pt2);
+			OneAxisRotationConstraint.add(b1, b2, axis1, axis2);
+
+			if(all[i]#10 > 0) {
+				MotorAroundAxisConstraint.add(b1, b2, axis1, all[i]#10, all[i]#11);
+			}
+			if(all[i]#8 <= all[i]#9) {
+				sal Vector3 temp;
+				sal Quaternion invB1, diff;
+				QTfn.inverse(RigidBody.orientation[b1], invB1);
+				QTfn.mul(RigidBody.orientation[b2], invB1, diff);
+				QTfn.toVector3(diff, temp);
+				V3fn.dot(temp, axis1);
+				let val = OUTPUT;
+				if(val > Math.sin(all[i]#9 * 0.5)) {
+					LimitAroundAxisConstraint.add(b1, b2, axis1, -all[i]#9);
+				}
+				if(val < Math.sin(all[i]#8 * 0.5)) {
+					V3fn.inverse(axis1, axis1);
+					LimitAroundAxisConstraint.add(b1, b2, axis1, all[i]#8);
+				}
+			}
+			i += 12;
+		}
+		until(all[i] > UNIVERSALJOINT) { // body1, body2, point1, point2, axis1, axis2, min1, max1, min2, max2, targetVelocity1, forceLimit1, targetVelocity2, forceLimit2
+			sal Vector3 pt1, pt2, axis1, axis2;
+			const b1 = all[i]#2;
+			const b2 = all[i]#3;
+			M4fn.transformDirection(RigidBody.transformMatrix[b1], all[i]#6, axis1);
+			M4fn.transformDirection(RigidBody.transformMatrix[b2], all[i]#7, axis2);
+			RigidBody.getPointInWorldSpace(b1, all[i]#4, pt1);
+			RigidBody.getPointInWorldSpace(b2, all[i]#5, pt2);
+			LockPointTranslationsConstraint.add(b1, b2, pt1, pt2);
+			TwoAxisRotationConstraint.add(b1, b2, axis1, axis2, 0);
+			if(all[i]#12 > 0) {
+				MotorAroundAxisConstraint.add(b1, b2, axis1, all[i]#12, all[i]#13);
+			}
+			if(all[i]#14 > 0) {
+				MotorAroundAxisConstraint.add(b1, b2, axis2, all[i]#14, all[i]#15);
+			}
+			if(all[i]#8 <= all[i]#9) {
+				sal Vector3 temp;
+				sal Quaternion invB1, diff;
+				QTfn.inverse(RigidBody.orientation[b1], invB1);
+				QTfn.mul(RigidBody.orientation[b2], invB1, diff);
+				QTfn.toVector3(diff, temp);
+				V3fn.dot(temp, axis1);
+				let val = OUTPUT;
+				if(val > Math.sin(all[i]#9 * 0.5)) {
+					LimitAroundAxisConstraint.add(b1, b2, axis1, -all[i]#9);
+				}
+				if(val < Math.sin(all[i]#8 * 0.5)) {
+					V3fn.inverse(axis1, axis1);
+					LimitAroundAxisConstraint.add(b1, b2, axis1, all[i]#8);
+				}
+			}
+			if(all[i]#10 <= all[i]#11) {
+				sal Vector3 temp;
+				sal Quaternion invB1, diff;
+				QTfn.inverse(RigidBody.orientation[b1], invB1);
+				QTfn.mul(RigidBody.orientation[b2], invB1, diff);
+				QTfn.toVector3(diff, temp);
+				V3fn.dot(temp, axis2);
+				let val = OUTPUT;
+				if(val > Math.sin(all[i]#11 * 0.5)) {
+					LimitAroundAxisConstraint.add(b1, b2, axis2, -all[i]#11);
+				}
+				if(val < Math.sin(all[i]#10 * 0.5)) {
+					V3fn.inverse(axis2, axis2);
+					LimitAroundAxisConstraint.add(b1, b2, axis2, all[i]#10);
+				}
+			}
+			i += 16;
+		}
+		until(all[i] > VERYUNIVERSALJOINT) { // body1, body2, point1, point2, axis1, axis2, min1, max1, min2, max2, min3, max3, targetVelocity1, forceLimit1, targetVelocity2, forceLimit2, targetVelocity3, forceLimit3
+			sal Vector3 pt1, pt2, axis1, axis2, axis3;
+			const b1 = all[i]#2;
+			const b2 = all[i]#3;
+			M4fn.transformDirection(RigidBody.transformMatrix[b1], all[i]#6, axis1);
+			M4fn.transformDirection(RigidBody.transformMatrix[b2], all[i]#7, axis2);
+			V3fn.cross(axis1, axis2, axis3);
+			RigidBody.getPointInWorldSpace(b1, all[i]#4, pt1);
+			RigidBody.getPointInWorldSpace(b2, all[i]#5, pt2);
+			LockPointTranslationsConstraint.add(b1, b2, pt1, pt2);
+			if(all[i]#12 <= all[i]#13) {
+				V3fn.dot(axis1, axis2);
+				let sin = Math.sin(all[i]#12);
+				if(OUTPUT < sin) {
+					TwoAxisRotationConstraint.add(b1, b2, axis1, axis2, sin);
+				} else {
+					sin = Math.sin(all[i]#13);
+					if(OUTPUT > sin) {
+						TwoAxisRotationConstraint.add(b1, b2, axis1, axis2, sin);
+					}
+				}
+			}
+			if(all[i]#14 > 0) {
+				MotorAroundAxisConstraint.add(b1, b2, axis1, all[i]#14, all[i]#15);
+			}
+			if(all[i]#16 > 0) {
+				MotorAroundAxisConstraint.add(b1, b2, axis2, all[i]#16, all[i]#17);
+			}
+			if(all[i]#18 > 0) {
+				MotorAroundAxisConstraint.add(b1, b2, axis3, all[i]#18, all[i]#19);
+			}
+			if(all[i]#8 <= all[i]#9) {
+				sal Vector3 temp;
+				sal Quaternion invB1, diff;
+				QTfn.inverse(RigidBody.orientation[b1], invB1);
+				QTfn.mul(RigidBody.orientation[b2], invB1, diff);
+				QTfn.toVector3(diff, temp);
+				V3fn.dot(temp, axis1);
+				let val = OUTPUT;
+				if(val > Math.sin(all[i]#9 * 0.5)) {
+					LimitAroundAxisConstraint.add(b1, b2, axis1, -all[i]#9);
+				}
+				if(val < Math.sin(all[i]#8 * 0.5)) {
+					V3fn.inverse(axis1, axis1);
+					LimitAroundAxisConstraint.add(b1, b2, axis1, all[i]#8);
+				}
+			}
+			if(all[i]#10 <= all[i]#11) {
+				sal Vector3 temp;
+				sal Quaternion invB1, diff;
+				QTfn.inverse(RigidBody.orientation[b1], invB1);
+				QTfn.mul(RigidBody.orientation[b2], invB1, diff);
+				QTfn.toVector3(diff, temp);
+				V3fn.dot(temp, axis2);
+				let val = OUTPUT;
+				if(val > Math.sin(all[i]#11 * 0.5)) {
+					LimitAroundAxisConstraint.add(b1, b2, axis2, -all[i]#11);
+				}
+				if(val < Math.sin(all[i]#10 * 0.5)) {
+					V3fn.inverse(axis2, axis2);
+					LimitAroundAxisConstraint.add(b1, b2, axis2, all[i]#10);
+				}
+			}
+			i += 20;
+		}
+		until(all[i] > SHAREDMOTIONJOINT) { // body1, body2, vel1, rot1, vel2, rot2
+			SharedMotionConstraint.add(all[i]#2, all[i]#3, all[i]#4, all[i]#5, all[i]#6, all[i]#7);
+			i += 8;
+		}
+	}
+}

@@ -1,0 +1,79 @@
+namespace World {
+	list bodies;
+	list constraintGenerators;
+	variable gravity;
+	variable duration;
+	variable solver;
+
+	function stepPhysics(duration) {
+		sal Vector3 zero, gravity; // Ugly workaround while there is still no global sal
+		World.duration = duration;
+
+		ForceGenerators.run();
+
+		for(let i; bodies.length) {
+			RigidBody.integrateForces(bodies[i], duration);
+		}
+
+		Constraint.clear();
+		for(let i; bodies.length) {
+			let col;
+			col = RigidBody.collider[bodies[i]];
+			while(col > -1) {
+				Collider.calcTransform(col);
+				col = Collider.next[col];
+			}
+		}
+		for(let a; bodies.length) {
+			let colA = RigidBody.collider[a];
+			while(colA > -1) {
+				let b = a + 1;
+				repeat(bodies.length-a) {
+					let colB = RigidBody.collider[b];
+					while(colB > -1) {
+						CollisionDetector.test(colA, colB);
+						colB = Collider.next[colB];
+					}
+					b += 1;
+				}
+				colA = Collider.next[colA];
+			}
+		}
+		ConstraintGenerators.run();
+
+		//ConstraintResolver.resolveConstraints();
+		ConstraintResolver.resolveConstraintsRandomized();
+		//ConstraintResolver.resolveConstraintsAdvanced();
+
+		for(let i; Constraint.J.length) {
+			V3fn.delete(Constraint.J[i]);
+		}
+
+		for(let i; bodies.length) {
+			RigidBody.integrateVelocities(bodies[i], duration);
+		};
+	}
+
+	function resetAll() {
+		infinity = 1/0;
+		bodies.clear();
+		RigidBody.clearAll();
+		Vector3.clear();
+		Matrix3.clear();
+		Matrix4.clear();
+		Quaternion.clear();
+		repeat(Vector3.reserved) Vector3.push(0);
+		repeat(Matrix3.reserved) Matrix3.push(0);
+		repeat(Matrix4.reserved) Matrix4.push(0);
+		repeat(Quaternion.reserved) Quaternion.push(0);
+		ConstraintGenerators.reset();
+		ForceGenerators.reset();
+
+		V3fn.free = -1;
+		M3fn.free = -1;
+		M4fn.free = -1;
+		QTfn.free = -1;
+		RigidBody.free = -1;
+		Collider.free = -1;
+	}
+}

@@ -1,0 +1,280 @@
+namespace RigidBody {
+	list position;
+	list orientation;
+	list transformMatrix;
+
+	list velocity;
+	list rotation;
+	list acceleration;
+	list lastFrameAcceleration;
+	list linearDamping;
+	list angularDamping;
+
+	list inverseMass;
+	list inverseInertiaTensor;
+	list inverseInertiaTensorWorld;
+
+	list forceAccum;
+	list torqueAccum;
+
+	list constraints;
+	list collider;
+
+	function clearAll() {
+		position.clear();
+		orientation.clear();
+		transformMatrix.clear();
+
+		velocity.clear();
+		rotation.clear();
+		acceleration.clear();
+		lastFrameAcceleration.clear();
+		linearDamping.clear();
+		angularDamping.clear();
+
+		inverseMass.clear();
+		inverseInertiaTensor.clear();
+		inverseInertiaTensorWorld.clear();
+
+		forceAccum.clear();
+		torqueAccum.clear();
+
+		constraints.clear();
+		collider.clear();
+
+
+		Collider.type.clear();
+		Collider.body.clear();
+		Collider.matrix.clear();
+		Collider.transform.clear();
+		Collider.restitution.clear();
+		Collider.friction.clear();
+		Collider.next.clear();
+
+		Collider.propA.clear();
+		Collider.propB.clear();
+	}
+	variable free;
+	function new() {
+		if(free > -1) {
+			let body = free;
+			free = position[free];
+			V3fn.new();
+			position[body] = OUTPUT;
+			QTfn.new();
+			orientation[body] = OUTPUT;
+			M4fn.new();
+			transformMatrix[body] = OUTPUT;
+			V3fn.new();
+			velocity[body] = OUTPUT;
+			V3fn.new();
+			rotation[body] = OUTPUT;
+			acceleration[body] = World.gravity;
+			V3fn.new();
+			lastFrameAcceleration[body] = OUTPUT;
+			linearDamping[body] = 1;
+			angularDamping[body] = 1;
+			inverseMass[body] = 1;
+			M3fn.new();
+			inverseInertiaTensor[body] = OUTPUT;
+			M3fn.new();
+			inverseInertiaTensorWorld[body] = OUTPUT;
+			V3fn.new();
+			forceAccum[body] = OUTPUT;
+			V3fn.new();
+			torqueAccum[body] = OUTPUT;
+			constraints[body] = -1;
+			collider[body] = -1;
+			OUTPUT = body;
+		} else {
+			V3fn.new();
+			position.push(OUTPUT);
+			QTfn.new();
+			orientation.push(OUTPUT);
+			M4fn.new();
+			transformMatrix.push(OUTPUT);
+			V3fn.new();
+			velocity.push(OUTPUT);
+			V3fn.new();
+			rotation.push(OUTPUT);
+			acceleration.push(World.gravity);
+			V3fn.new();
+			lastFrameAcceleration.push(OUTPUT);
+			linearDamping.push(1);
+			angularDamping.push(1);
+			inverseMass.push(1);
+			M3fn.new();
+			inverseInertiaTensor.push(OUTPUT);
+			M3fn.new();
+			inverseInertiaTensorWorld.push(OUTPUT);
+			V3fn.new();
+			forceAccum.push(OUTPUT);
+			V3fn.new();
+			torqueAccum.push(OUTPUT);
+			constraints.push(-1);
+			collider.push(-1);
+			OUTPUT = position.length;
+		}
+	}
+	function delete(index) {
+		V3fn.delete(position[index]);
+		QTfn.delete(orientation[index]);
+		M4fn.delete(transformMatrix[index]);
+		V3fn.delete(velocity[index]);
+		V3fn.delete(rotation[index]);
+		V3fn.delete(lastFrameAcceleration[index]);
+		M3fn.delete(inverseInertiaTensor[index]);
+		M3fn.delete(inverseInertiaTensorWorld[index]);
+		V3fn.delete(forceAccum[index]);
+		V3fn.delete(torqueAccum[index]);
+		position[index] = free;
+		free = index;
+		Collider.delete(index);
+	}
+
+	function calculateTransformMatrix(transformMatrix, position, orientation) {
+		const ori = Quaternion[orientation];
+		const pos = Vector3[position];
+		const out = Matrix4[transformMatrix]#1;
+
+		out#0  = 1-2*ori#j*ori#j - 2*ori#k*ori#k;
+		out#1  = 2*ori#i*ori#j - 2*ori#r*ori#k;
+		out#1  = 2*ori#i*ori#j - 2*ori#r*ori#k;
+		out#2  = 2*ori#i*ori#k + 2*ori#r*ori#j;
+		out#3  = pos#x;
+		out#4  = 2*ori#i*ori#j + 2*ori#r*ori#k;
+		out#5  = 1-2*ori#i*ori#i - 2*ori#k*ori#k;
+		out#6  = 2*ori#j*ori#k - 2*ori#r*ori#i;
+		out#7  = pos#y;
+		out#8  = 2*ori#i*ori#k - 2*ori#r*ori#j;
+		out#9  = 2*ori#j*ori#k + 2*ori#r*ori#i;
+		out#10 = 1-2*ori#i*ori#i - 2*ori#j*ori#j;
+		out#11 = pos#z;
+	}
+	function calculateDerivedData(body) {
+		QTfn.normalize(RigidBody.orientation[body]);
+		RigidBody.calculateTransformMatrix(RigidBody.transformMatrix[body], RigidBody.position[body], RigidBody.orientation[body]);
+		RigidBody.transformInertiaTensor(RigidBody.inverseInertiaTensorWorld[body], RigidBody.inverseInertiaTensor[body], RigidBody.transformMatrix[body]);
+	}
+	function setBoxInertiaTensor(body, dx, dy, dz) { //those are half-sizes
+		sal Matrix3 it;
+		sal Vector3 halfsize;
+		V3fn.set(halfsize, dx, dy, dz);
+		M3fn.setBlockInertiaTensor(it, halfsize, 1 / RigidBody.inverseMass[body]);
+		M3fn.setInverse(it, RigidBody.inverseInertiaTensor[body]);
+	}
+	function calculateInertiaTensor(body) {
+		sal Matrix3 inertiaTensor, it;
+		M3fn.set(inertiaTensor, 0,0,0, 0,0,0, 0,0,0);
+
+		let collider;
+		collider = RigidBody.collider[body];
+		while(collider > -1) {
+			Collider.getInertiaTensor(collider, it);
+			M3fn.addMatrix3(inertiaTensor, it, inertiaTensor);
+			collider = Collider.next[collider];
+		}
+		M3fn.setInverse(inertiaTensor, RigidBody.inverseInertiaTensor[body]);
+	}
+	function transformInertiaTensor(iitWorldIn, iitBodyIn, rotmatIn) {
+		let t4, t9, t14, t28, t33, t38, t52, t57, t62;
+		const rotmat = Matrix4[rotmatIn]#1;
+		const iitWorld = Matrix3[iitWorldIn]#1;
+		const iitBody = Matrix3[iitBodyIn]#1;
+
+		t4 = rotmat#0*iitBody#0 + rotmat#1*iitBody#3 + rotmat#2*iitBody#6;
+		t9 = rotmat#0*iitBody#1 + rotmat#1*iitBody#4 + rotmat#2*iitBody#7;
+		t14 = rotmat#0*iitBody#2 + rotmat#1*iitBody#5 + rotmat#2*iitBody#8;
+		t28 = rotmat#4*iitBody#0 + rotmat#5*iitBody#3 + rotmat#6*iitBody#6;
+		t33 = rotmat#4*iitBody#1 + rotmat#5*iitBody#4 + rotmat#6*iitBody#7;
+		t38 = rotmat#4*iitBody#2 + rotmat#5*iitBody#5 + rotmat#6*iitBody#8;
+		t52 = rotmat#8*iitBody#0 + rotmat#9*iitBody#3 + rotmat#10*iitBody#6;
+		t57 = rotmat#8*iitBody#1 + rotmat#9*iitBody#4 + rotmat#10*iitBody#7;
+		t62 = rotmat#8*iitBody#2 + rotmat#9*iitBody#5 + rotmat#10*iitBody#8;
+
+		iitWorld#0 = t4*rotmat#0 + t9*rotmat#1 + t14*rotmat#2;
+		iitWorld#1 = t4*rotmat#4 + t9*rotmat#5 + t14*rotmat#6;
+		iitWorld#2 = t4*rotmat#8 + t9*rotmat#9 + t14*rotmat#10;
+		iitWorld#3 = t28*rotmat#0 + t33*rotmat#1 + t38*rotmat#2;
+		iitWorld#4 = t28*rotmat#4 + t33*rotmat#5 + t38*rotmat#6;
+		iitWorld#5 = t28*rotmat#8 + t33*rotmat#9 + t38*rotmat#10;
+		iitWorld#6 = t52*rotmat#0 + t57*rotmat#1 + t62*rotmat#2;
+		iitWorld#7 = t52*rotmat#4 + t57*rotmat#5 + t62*rotmat#6;
+		iitWorld#8 = t52*rotmat#8 + t57*rotmat#9 + t62*rotmat#10;
+	}
+	function addForce(body, force) {
+		V3fn.add(RigidBody.forceAccum[body], force, RigidBody.forceAccum[body]);
+	}
+	function addTorque(body, torque) {
+		V3fn.add(RigidBody.torqueAccum[body], torque, RigidBody.torqueAccum[body]);
+	}
+	function addForceAtPoint(body, force, point) {
+		sal Vector3 pt, torque;
+		V3fn.sub(point, RigidBody.position[body], pt);
+		V3fn.cross(pt, force, torque);
+		V3fn.add(RigidBody.forceAccum[body], force, RigidBody.forceAccum[body]);
+		V3fn.add(RigidBody.torqueAccum[body], torque, RigidBody.torqueAccum[body]);
+	}
+	function addForceAtBodyPoint(body, force, point) {
+		sal Vector3 worldPoint;
+		RigidBody.getPointInWorldSpace(body, point, worldPoint);
+		RigidBody.addForceAtPoint(body, force, worldPoint);
+	}
+	function addTorqueAtPoint(body, torque, point) {
+		sal Vector3 pt, force;
+		V3fn.sub(point, RigidBody.position[body], pt);
+		V3fn.cross(torque, pt, force);
+		V3fn.add(RigidBody.forceAccum[body], force, RigidBody.forceAccum[body]);
+		V3fn.add(RigidBody.torqueAccum[body], torque, RigidBody.torqueAccum[body]);
+	}
+	function addTorqueAtBodyPoint(body, torque, point) {
+		sal Vector3 worldPoint;
+		RigidBody.getPointInWorldSpace(body, point, worldPoint);
+		RigidBody.addTorqueAtPoint(body, torque, worldPoint);
+	}
+	inline function integrateForces(body, duration) {
+		RigidBody.calculateDerivedData(body); //Yes, this doesn't belong here, but removing it breaks some stuff
+
+		RigidBody.constraints[body] = -1; // Resetting linked list of constraints
+
+		sal Vector3 angularAcceleration;
+		V3fn.addScaled(RigidBody.acceleration[body], RigidBody.forceAccum[body], RigidBody.inverseMass[body], RigidBody.lastFrameAcceleration[body]);
+		M3fn.transform(RigidBody.inverseInertiaTensorWorld[body], RigidBody.torqueAccum[body], angularAcceleration);
+		V3fn.addScaled(RigidBody.velocity[body], RigidBody.lastFrameAcceleration[body], duration, RigidBody.velocity[body]);
+		V3fn.addScaled(RigidBody.rotation[body], angularAcceleration, duration, RigidBody.rotation[body]);
+
+		//!!!!! taking to the power of duration was removed. It should be added in other place instaed
+		V3fn.mul(RigidBody.velocity[body], RigidBody.linearDamping[body],  RigidBody.velocity[body]);
+		V3fn.mul(RigidBody.rotation[body], RigidBody.angularDamping[body], RigidBody.rotation[body]);
+	}
+	inline function integrateVelocities(body, duration) {
+		V3fn.addScaled(RigidBody.position[body], RigidBody.velocity[body], duration, RigidBody.position[body]);
+		QTfn.rotateByScaledVector(RigidBody.orientation[body], RigidBody.rotation[body], duration);
+
+		RigidBody.calculateDerivedData(body);
+		V3fn.clear(RigidBody.forceAccum[body])
+		V3fn.clear(RigidBody.torqueAccum[body]);
+	}
+	inline function getPointInWorldSpace(body, point, output) {
+		M4fn.transform(RigidBody.transformMatrix[body], point, output);
+	}
+	inline function getPointInLocalSpace(body, point, output) {
+		M4fn.transformInverse(RigidBody.transformMatrix[body], point, output);
+	}
+	inline function getDirectionInWorldSpace(body, dir, output) {
+		M4fn.transformDirection(RigidBody.transformMatrix[body], dir, output);
+	}
+	inline function getDirectionInLocalSpace(body, dir, output) {
+		M4fn.transformInverseDirection(RigidBody.transformMatrix[body], dir, output);
+	}
+	function setDamping(body, linear, angular) {
+		RigidBody.linearDamping[body] = linear;
+		RigidBody.angularDamping[body] = angular;
+	}
+	function makeImmovable(body) {
+		RigidBody.inverseMass[body] = 0;
+	}
+	function makeIrrotatable(body) {
+		M3fn.set(RigidBody.inverseInertiaTensor[body], 0,0,0, 0,0,0, 0,0,0);
+	}
+}

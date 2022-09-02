@@ -1,0 +1,95 @@
+list Quaternion;
+listoffsets Quaternion 4 {r:1, i:2, j:3, k:4};
+
+namespace QTfn "Quaternion | " {
+	variable free;
+	function new() {
+		if(free > -1) {
+			OUTPUT = free;
+			free = Quaternion[free]#1;
+			Quaternion[OUTPUT]#r = 1;
+			Quaternion[OUTPUT]#i = 0;
+			Quaternion[OUTPUT]#j = 0;
+			Quaternion[OUTPUT]#k = 0;
+		} else {
+			OUTPUT = Quaternion.length;
+			Quaternion.push(1);
+			Quaternion.push(0);
+			Quaternion.push(0);
+			Quaternion.push(0);
+		}
+	}
+	function delete(elem) {
+		Quaternion[elem]#1 = free;
+		free = elem;
+	}
+
+	function set(q1, r, i, j, k) {
+		Quaternion[q1]#r = r;
+		Quaternion[q1]#i = i;
+		Quaternion[q1]#j = j;
+		Quaternion[q1]#k = k;
+	}
+	function reset(q1) {
+		QTfn.set(q1, 1, 0, 0, 0);
+	}
+	function normalize(q1) {
+		const q = Quaternion[q1];
+		let dist = q#r*q#r + q#i*q#i + q#j*q#j + q#k*q#k;
+		if(dist == 0) {
+			q#r = 1;
+			return;
+		}
+		if(Math.abs(dist-1) < 0.001) return;
+		dist = 1 / Math.sqrt(dist);
+		q#r *= dist;
+		q#i *= dist;
+		q#j *= dist;
+		q#k *= dist;
+	}
+	function mul(q1, q2, q3) {
+		const a = Quaternion[q1];
+		const b = Quaternion[q2];
+		QTfn.set(q3,a#r*b#r - a#i*b#i - a#j*b#j - a#k*b#k,
+					a#r*b#i + a#i*b#r + a#j*b#k - a#k*b#j,
+					a#r*b#j + a#j*b#r + a#k*b#i - a#i*b#k,
+					a#r*b#k + a#k*b#r + a#i*b#j - a#j*b#i);
+	}
+	function rotateByVector(q1, vector) {  //TODO: optimize. Maybe???
+		sal Quaternion fromVec;
+		Quaternion[fromVec]#r = 0;
+		Quaternion[fromVec]#i = Vector3[vector]#x;
+		Quaternion[fromVec]#j = Vector3[vector]#y;
+		Quaternion[fromVec]#k = Vector3[vector]#z;
+		QTfn.mul(q1, fromVec, q1);
+	}
+	function rotateByScaledVector(q1, vector, scale) {
+		sal Quaternion fromVec;
+		Quaternion[fromVec]#r = 0;
+		Quaternion[fromVec]#i = Vector3[vector]#x * scale;
+		Quaternion[fromVec]#j = Vector3[vector]#y * scale;
+		Quaternion[fromVec]#k = Vector3[vector]#z * scale;
+		QTfn.mul(fromVec, q1, fromVec);
+		Quaternion[q1]#r += Quaternion[fromVec]#r * 0.5;
+		Quaternion[q1]#i += Quaternion[fromVec]#i * 0.5;
+		Quaternion[q1]#k += Quaternion[fromVec]#k * 0.5;
+		Quaternion[q1]#j += Quaternion[fromVec]#j * 0.5;
+	}
+	function inverse(q1, q2) {
+		Quaternion[q2]#r =  Quaternion[q1]#r;
+		Quaternion[q2]#i = -Quaternion[q1]#i;
+		Quaternion[q2]#j = -Quaternion[q1]#j;
+		Quaternion[q2]#k = -Quaternion[q1]#k;
+	}
+	function toVector3(q, v) {
+		Vector3[v]#x = Quaternion[q]#i;
+		Vector3[v]#y = Quaternion[q]#j;
+		Vector3[v]#z = Quaternion[q]#k;
+	}
+	function copy(q1, q2) {
+		Quaternion[q2]#r = Quaternion[q1]#r;
+		Quaternion[q2]#i = Quaternion[q1]#i;
+		Quaternion[q2]#j = Quaternion[q1]#j;
+		Quaternion[q2]#k = Quaternion[q1]#k;
+	}
+}

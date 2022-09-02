@@ -1,0 +1,13 @@
+variable OUTPUT;
+variable infinity;
+
+namespace Math {
+	const PI = 3.141592653589793;
+
+	inline function radians(inp) {
+		inp / 180 * Math.PI;
+	}
+	inline function degrees(inp) {
+		inp / Math.PI * 180;
+	}
+}

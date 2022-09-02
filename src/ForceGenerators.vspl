@@ -1,0 +1,101 @@
+namespace ForceGenerators {
+	list all; // List of all current force generators
+	list toInsert;
+
+	const GLOBALPULL = 0;
+	const LOCALPULL = 1;
+	const SPRING = 2;
+	const BUOYANCY = 3;
+
+	inline function reset() {
+		ForceGenerators.all = [infinity, 0];
+	}
+
+	function insert(type) {
+		const i = OUTPUT;
+		i = 1;
+		until(all[i] > type) {
+			i += all[i]#1;
+		}
+		let length = toInsert.length;
+		repeat(length) {
+			all.insert(i, toInsert["last"]);
+			toInsert.delete("last");
+		}
+		all.insert(i, 2 + length);
+		all.insert(i, type);
+	}
+
+	function delete(index) {
+		repeat(all[index]#1) {
+			all.delete(index);
+		}
+	}
+
+	function run() {
+		let i = 1;
+		until(all[i] > GLOBALPULL) { // body1, force
+			const body = all[i]#2;
+			const force = all[i]#3;
+			RigidBody.addForce(body, force);
+			i += 4;
+		}
+		until(all[i] > LOCALPULL) { // body1, force
+			sal Vector3 force;
+			const body = all[i]#2;
+			const localForce = all[i]#3;
+			M4fn.transformDirection(RigidBody.transformMatrix[body], localForce, force);
+			RigidBody.addForce(body, force);
+			i += 4;
+		}
+		until(all[i] > SPRING) { // body1, body2, point1, point2, power, restLength, side, double
+			sal Vector3 point1ws, point2ws, force;
+			const body1 = all[i]#2;
+			const body2 = all[i]#3;
+			const point1 = all[i]#4;
+			const point2 = all[i]#5;
+			const power = all[i]#6;
+			const restLength = all[i]#7;
+			const side = all[i]#8;
+			const double = all[i]#9;
+
+			RigidBody.getPointInWorldSpace(body1, point1, point1ws);
+			RigidBody.getPointInWorldSpace(body2, point2, point2ws);
+			V3fn.sub(point2ws, point1ws, force);
+			V3fn.magnitude(force);
+			if((OUTPUT - restLength) * side >= 0) {
+				let mul = Math.abs(OUTPUT - restLength) * power;
+				V3fn.mul(force, mul / OUTPUT, force);
+				RigidBody.addForceAtPoint(body1, force, point1ws);
+				if(double == 1) {
+					V3fn.inverse(force, force);
+					RigidBody.addForceAtPoint(body2, force, point2ws);
+				}
+			}
+			i += 10;
+		}
+		until(all[i] > BUOYANCY) { // body, point, volume, halfHeight, liquidHeight, liquidDensity
+			sal Vector3 pointWs, force;
+			const body = all[i]#2;
+			const point = all[i]#3;
+			const volume = all[i]#4;
+			const halfHeight = all[i]#5;
+			const liquidHeight = all[i]#6;
+			const liquidDensity = all[i]#7;
+
+			RigidBody.getPointInWorldSpace(body, point, pointWs);
+
+			let depth = Vector3[pointWs]#y;
+
+			if(depth < liquidHeight + halfHeight) {
+				if(depth <= liquidHeight - halfHeight) {
+					V3fn.set(force, 0, liquidDensity * volume, 0);
+				} else {
+					V3fn.set(force, 0, liquidDensity * volume * (liquidHeight + halfHeight - depth) / (2 * halfHeight), 0);
+				}
+				RigidBody.addForceAtPoint(body, force, pointWs);
+			}
+			i += 8;
+		}
+	}
+}

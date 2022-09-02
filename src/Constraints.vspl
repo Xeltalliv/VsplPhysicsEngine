@@ -1,0 +1,951 @@
+namespace Constraint {
+	list b1;
+	list b2;
+	list size;
+	list type;
+	list ptr;
+	list J;
+	list invKPtr;
+	list invKData;
+	list B;
+	list lambdaQ;
+	list lambdaQfinal;
+	list violation;
+	list propA;
+	list propB;
+
+	function clear() {
+		b1.clear();
+		b2.clear();
+		size.clear();
+		type.clear();
+		ptr.clear();
+		J.clear();
+		invKPtr.clear();
+		invKData.clear();
+		B.clear();
+		lambdaQ.clear();
+		lambdaQfinal.clear();
+		violation.clear();
+		propA.clear();
+		propB.clear();
+	}
+	inline function pushK1(a) {
+		Constraint.invKData.push(1 / a);
+	}
+	function pushK2(a, b, c, d) {
+		let det = a*d - b*c;
+		invKData.push( d / det);
+		invKData.push(-b / det);
+		invKData.push(-c / det);
+		invKData.push( a / det);
+	}
+	function pushK3(a, b, c, d, e, f, g, h, i) { //TODO: optimize args to be inlined
+		sal Matrix3 in, out;
+		M3fn.set(in, a, b, c, d, e, f, g, h, i);
+		M3fn.setInverse(in, out);
+		invKData.push(Matrix3[out]#1);
+		invKData.push(Matrix3[out]#2);
+		invKData.push(Matrix3[out]#3);
+		invKData.push(Matrix3[out]#4);
+		invKData.push(Matrix3[out]#5);
+		invKData.push(Matrix3[out]#6);
+		invKData.push(Matrix3[out]#7);
+		invKData.push(Matrix3[out]#8);
+		invKData.push(Matrix3[out]#9);
+	}
+	function clampLambdas(constr, ptr) {
+		let ctype = type[constr];
+		if(ctype < 4) {
+			if(ctype < 2) {
+				if(ctype < 1) {
+					clampLambdasNone1(ptr); // 0
+				} else {
+					clampLambdasNone2(ptr); // 1
+				}
+			} else {
+				if(ctype < 3) {
+					clampLambdasNone3(ptr); // 2
+				} else {
+					clampLambdasPositive(ptr); // 3
+				}
+			}
+		} else {
+			if(ctype < 6) {
+				if(ctype < 5) {
+					clampLambdasFrictionLinear(constr, ptr); // 4
+				} else {
+					clampLambdasFrictionCone(constr, ptr); // 5
+				}
+			} else {
+				clampLambdasSimpleLimit(constr, ptr);
+			}
+		}
+	}
+
+	inline function clampLambdasNone1(ptr) {
+		Constraint.lambdaQ[ptr+1] = ConstraintResolver.unclamped[1];
+	}
+
+	inline function clampLambdasNone2(ptr) {
+		Constraint.lambdaQ[ptr+1] = ConstraintResolver.unclamped[1];
+		Constraint.lambdaQ[ptr+2] = ConstraintResolver.unclamped[2];
+	}
+
+	inline function clampLambdasNone3(ptr) {
+		Constraint.lambdaQ[ptr+1] = ConstraintResolver.unclamped[1];
+		Constraint.lambdaQ[ptr+2] = ConstraintResolver.unclamped[2];
+		Constraint.lambdaQ[ptr+3] = ConstraintResolver.unclamped[3];
+	}
+
+	inline function clampLambdasPositive(ptr) {
+		if(ConstraintResolver.unclamped[1] > 0) {
+			Constraint.lambdaQ[ptr+1] = ConstraintResolver.unclamped[1];
+		} else {
+			Constraint.lambdaQ[ptr+1] = 0;
+		}
+	}
+	inline function clampLambdasFrictionLinear(constr, ptr) {
+		//   || Fc || <= mu * || Fn ||
+		//   || J^T * lambda || <= mu * || Fn ||
+		//   | lambda | <= mu * || Fn ||
+		//   -mu * || Fn || <= lambda <= mu * || Fn ||
+		//
+		// But since we are using lambda' = lambda * deltaTime
+		//   -mu * || Fn || * deltaTime <= lambda' <= mu * || Fn || * deltaTime
+		//
+		// After looking at https://pybullet.org/Bullet/phpBB3/viewtopic.php?t=444 it seems like
+		// it is possible to use lambda' of penentration constraint instead of  || Fn || * deltaTime
+		const mu = 0.2;
+		let a = mu * lambdaQ[propA[constr]];
+
+		let value = ConstraintResolver.unclamped[1];
+		if(value < -a) value = -a;
+		if(value >  a) value =  a;
+		Constraint.lambdaQ[ptr+1] = value;
+	}
+	inline function clampLambdasFrictionCone(constr, ptr) {
+		const inp = ConstraintResolver.unclamped;
+		const mu = 0.2;
+		let a = mu * lambdaQ[propA[constr]];
+
+		let length = Math.sqrt(inp[1]*inp[1] + inp[2]*inp[2]);
+		if(length > a) {
+			inp[1] = inp[1] / length * a;
+			inp[2] = inp[2] / length * a;
+		}
+		Constraint.lambdaQ[ptr+1] = inp[1];
+		Constraint.lambdaQ[ptr+2] = inp[2];
+	}
+	inline function clampLambdasSimpleLimit(constr, ptr) {
+		let val = ConstraintResolver.unclamped[1];
+		let limit = propA[constr];
+		if(val >  limit) val =  limit;
+		if(val < -limit) val = -limit;
+		Constraint.lambdaQ[ptr+1] = val;
+	}
+}
+
+namespace LambdaClampers {
+	const NONE1 = 0;
+	const NONE2 = 1;
+	const NONE3 = 2;
+	const POSITIVE = 3;
+	const FRICTIONLINEAR = 4;
+	const FRICTIONCONE = 5;
+	const SIMPLELIMIT = 6;
+}
+
+namespace PenetrationConstraint {
+	function add(b1, b2, point1, point2, normal, restitution, offset) {
+		sal Vector3 r1, r2, pointDiff, r1_x_n, r2_x_n, temp, cross;
+		const duration = World.duration;
+		const x1 = RigidBody.position[b1];
+		const x2 = RigidBody.position[b2];
+		const v1 = RigidBody.velocity[b1];
+		const v2 = RigidBody.velocity[b2];
+		const w1 = RigidBody.rotation[b1];
+		const w2 = RigidBody.rotation[b2];
+		const a1 = RigidBody.acceleration[b1];
+		const a2 = RigidBody.acceleration[b2];
+		const n = normal;
+		V3fn.sub(point1, x1, r1);
+		V3fn.sub(point2, x2, r2);
+		V3fn.sub(point2, point1, pointDiff);
+		V3fn.cross(r1, n, r1_x_n);
+		V3fn.cross(r2, n, r2_x_n);
+
+		Constraint.b1.push(b1);
+		Constraint.b2.push(b2);
+		Constraint.size.push(1);
+		Constraint.type.push(LambdaClampers.POSITIVE);
+		Constraint.ptr.push(Constraint.lambdaQ.length);
+		Constraint.invKPtr.push(Constraint.invKData.length);
+		Constraint.lambdaQ.push(0);
+		Constraint.lambdaQfinal.push(0);
+		Constraint.violation.push(0);
+		Constraint.propA.push(0);
+		Constraint.propB.push(0);
+
+		V3fn.new();
+		V3fn.inverse(n, OUTPUT);
+		Constraint.J.push(OUTPUT);
+		V3fn.new();
+		V3fn.inverse(r1_x_n, OUTPUT);
+		Constraint.J.push(OUTPUT);
+		V3fn.new();
+		V3fn.copy(n, OUTPUT);
+		Constraint.J.push(OUTPUT);
+		V3fn.new();
+		V3fn.copy(r2_x_n, OUTPUT);
+		Constraint.J.push(OUTPUT);
+
+		V3fn.mulMat(r1_x_n, RigidBody.inverseInertiaTensorWorld[b1], temp);
+		V3fn.dot(temp, r1_x_n);
+		let OUTPUT2 = OUTPUT;
+		V3fn.mulMat(r2_x_n, RigidBody.inverseInertiaTensorWorld[b2], temp);
+		V3fn.dot(temp, r2_x_n);
+		Constraint.pushK1(RigidBody.inverseMass[b1] + RigidBody.inverseMass[b2] + OUTPUT2 + OUTPUT);
+
+		V3fn.dot(pointDiff, n);
+		const biasFactor = 0.1;
+		const errorCorSlop = 0.001;
+		let b_errorCorr = biasFactor / duration * (OUTPUT - offset + errorCorSlop);
+		if(b_errorCorr > 0) b_errorCorr = 0;
+
+		const restitutionEpsilon = -0.1;
+		const restitutionSlop = 0.01;
+		
+		V3fn.addScaled(v2, a2, -duration, temp);
+		V3fn.cross(w2, r2, cross);
+		V3fn.add(temp, cross, temp);
+		V3fn.sub(temp, v1, temp);
+		V3fn.addScaled(temp, a1, duration, temp);
+		V3fn.cross(w1, r1, cross);
+		V3fn.sub(temp, cross, temp);
+		V3fn.dot(temp, n);
+		let b_restitution = restitution * (OUTPUT - restitutionSlop);
+		if(b_restitution > restitutionEpsilon) b_restitution = 0
+
+		Constraint.B.push(b_errorCorr + b_restitution);
+	}
+}
+
+namespace FrictionConstraint {
+	function add(b1, b2, point1, point2, axis, friction, penConstr) {
+		sal Vector3 r1, r2, pointDiff, r1_x_u, r2_x_u, temp, cross;
+		const duration = World.duration;
+		const x1 = RigidBody.position[b1];
+		const x2 = RigidBody.position[b2];
+		const v1 = RigidBody.velocity[b1];
+		const v2 = RigidBody.velocity[b2];
+		const w1 = RigidBody.rotation[b1];
+		const w2 = RigidBody.rotation[b2];
+		const a1 = RigidBody.acceleration[b1];
+		const a2 = RigidBody.acceleration[b2];
+		const u = axis;
+		V3fn.sub(point1, x1, r1);
+		V3fn.sub(point2, x2, r2);
+		V3fn.sub(point2, point1, pointDiff);
+		V3fn.cross(r1, u, r1_x_u);
+		V3fn.cross(r2, u, r2_x_u);
+
+		Constraint.b1.push(b1);
+		Constraint.b2.push(b2);
+		Constraint.size.push(1);
+		Constraint.type.push(LambdaClampers.FRICTIONLINEAR);
+		Constraint.ptr.push(Constraint.lambdaQ.length);
+		Constraint.invKPtr.push(Constraint.invKData.length);
+		Constraint.lambdaQ.push(0);
+		Constraint.lambdaQfinal.push(0);
+		Constraint.violation.push(0);
+		Constraint.propA.push(penConstr);
+		Constraint.propB.push(friction);
+
+		V3fn.new();
+		V3fn.inverse(u, OUTPUT);
+		Constraint.J.push(OUTPUT);
+		V3fn.new();
+		V3fn.inverse(r1_x_u, OUTPUT);
+		Constraint.J.push(OUTPUT);
+		V3fn.new();
+		V3fn.copy(u, OUTPUT);
+		Constraint.J.push(OUTPUT);
+		V3fn.new();
+		V3fn.copy(r2_x_u, OUTPUT);
+		Constraint.J.push(OUTPUT);
+
+		V3fn.mulMat(r1_x_u, RigidBody.inverseInertiaTensorWorld[b1], temp);
+		V3fn.dot(temp, r1_x_u);
+		let OUTPUT2 = OUTPUT;
+		V3fn.mulMat(r2_x_u, RigidBody.inverseInertiaTensorWorld[b2], temp);
+		V3fn.dot(temp, r2_x_u);
+		Constraint.pushK1(RigidBody.inverseMass[b1] + RigidBody.inverseMass[b2] + OUTPUT2 + OUTPUT);
+
+
+		Constraint.B.push(0);
+	}
+}
+
+namespace ConeFrictionConstraint {
+	function add(b1, b2, point1, point2, axis1, axis2, friction, penConstr) {
+		sal Vector3 r1, r2, pointDiff, r1_x_u1, r2_x_u1, r1_x_u2, r2_x_u2, r1_x_u1_itw, r2_x_u1_itw, r1_x_u2_itw, r2_x_u2_itw;
+		const duration = World.duration;
+		const x1 = RigidBody.position[b1];
+		const x2 = RigidBody.position[b2];
+		const v1 = RigidBody.velocity[b1];
+		const v2 = RigidBody.velocity[b2];
+		const w1 = RigidBody.rotation[b1];
+		const w2 = RigidBody.rotation[b2];
+		const a1 = RigidBody.acceleration[b1];
+		const a2 = RigidBody.acceleration[b2];
+		const u1 = axis1;
+		const u2 = axis2;
+		V3fn.sub(point1, x1, r1);
+		V3fn.sub(point2, x2, r2);
+		V3fn.sub(point2, point1, pointDiff);
+		V3fn.cross(r1, u1, r1_x_u1);
+		V3fn.cross(r2, u1, r2_x_u1);
+		V3fn.cross(r1, u2, r1_x_u2);
+		V3fn.cross(r2, u2, r2_x_u2);
+
+		Constraint.b1.push(b1);
+		Constraint.b2.push(b2);
+		Constraint.size.push(2);
+		Constraint.type.push(LambdaClampers.FRICTIONCONE);
+		Constraint.ptr.push(Constraint.lambdaQ.length);
+		Constraint.invKPtr.push(Constraint.invKData.length);
+		Constraint.lambdaQ.push(0);
+		Constraint.lambdaQ.push(0);
+		Constraint.lambdaQfinal.push(0);
+		Constraint.lambdaQfinal.push(0);
+		Constraint.violation.push(0);
+		Constraint.propA.push(penConstr);
+		Constraint.propB.push(friction);
+
+		V3fn.new();
+		V3fn.inverse(u1, OUTPUT);
+		Constraint.J.push(OUTPUT);
+		V3fn.new();
+		V3fn.inverse(r1_x_u1, OUTPUT);
+		Constraint.J.push(OUTPUT);
+		V3fn.new();
+		V3fn.copy(u1, OUTPUT);
+		Constraint.J.push(OUTPUT);
+		V3fn.new();
+		V3fn.copy(r2_x_u1, OUTPUT);
+		Constraint.J.push(OUTPUT);
+
+		V3fn.new();
+		V3fn.inverse(u2, OUTPUT);
+		Constraint.J.push(OUTPUT);
+		V3fn.new();
+		V3fn.inverse(r1_x_u2, OUTPUT);
+		Constraint.J.push(OUTPUT);
+		V3fn.new();
+		V3fn.copy(u2, OUTPUT);
+		Constraint.J.push(OUTPUT);
+		V3fn.new();
+		V3fn.copy(r2_x_u2, OUTPUT);
+		Constraint.J.push(OUTPUT);
+
+		let invMassSum = RigidBody.inverseMass[b1] + RigidBody.inverseMass[b2];
+
+		let A, B, C, D;
+		V3fn.mulMat(r1_x_u1, RigidBody.inverseInertiaTensorWorld[b1], r1_x_u1_itw);
+		V3fn.mulMat(r2_x_u1, RigidBody.inverseInertiaTensorWorld[b2], r2_x_u1_itw);
+		V3fn.mulMat(r1_x_u2, RigidBody.inverseInertiaTensorWorld[b1], r1_x_u2_itw);
+		V3fn.mulMat(r2_x_u2, RigidBody.inverseInertiaTensorWorld[b2], r2_x_u2_itw);
+		V3fn.dot(r1_x_u1_itw, r1_x_u1);
+		A = invMassSum + OUTPUT;
+		V3fn.dot(r2_x_u1_itw, r2_x_u1);
+		A += OUTPUT;
+		V3fn.dot(r1_x_u1_itw, r1_x_u2);
+		B = OUTPUT;
+		V3fn.dot(r2_x_u1_itw, r2_x_u2);
+		B += OUTPUT;
+		V3fn.dot(r1_x_u2_itw, r1_x_u1);
+		C = OUTPUT;
+		V3fn.dot(r2_x_u2_itw, r2_x_u1);
+		C += OUTPUT;
+		V3fn.dot(r1_x_u2_itw, r1_x_u2);
+		D = invMassSum + OUTPUT;
+		V3fn.dot(r2_x_u2_itw, r2_x_u2);
+		D += OUTPUT;
+		Constraint.pushK2(A, B, C, D);
+
+		Constraint.B.push(0);
+		Constraint.B.push(0);
+	}
+}
+
+namespace LockPointTranslationsConstraint {
+	function add(b1, b2, point1, point2) {
+		sal Vector3 r1, r2, diff;
+		const duration = World.duration;
+		const x1 = RigidBody.position[b1];
+		const x2 = RigidBody.position[b2];
+		V3fn.sub(point1, x1, r1);
+		V3fn.sub(point2, x2, r2);
+		V3fn.sub(point2, point1, diff);
+
+		Constraint.b1.push(b1);
+		Constraint.b2.push(b2);
+		Constraint.size.push(3);
+		Constraint.type.push(LambdaClampers.NONE3);
+		Constraint.ptr.push(Constraint.lambdaQ.length);
+		Constraint.invKPtr.push(Constraint.invKData.length);
+		Constraint.lambdaQ.push(0);
+		Constraint.lambdaQ.push(0);
+		Constraint.lambdaQ.push(0);
+		Constraint.lambdaQfinal.push(0);
+		Constraint.lambdaQfinal.push(0);
+		Constraint.lambdaQfinal.push(0);
+		Constraint.violation.push(0);
+		Constraint.propA.push(0);
+		Constraint.propB.push(0);
+
+		V3fn.new(); V3fn.set(OUTPUT,             -1,              0,              0); Constraint.J.push(OUTPUT);
+		V3fn.new(); V3fn.set(OUTPUT,              0, -Vector3[r1]#z,  Vector3[r1]#y); Constraint.J.push(OUTPUT);
+		V3fn.new(); V3fn.set(OUTPUT,              1,              0,              0); Constraint.J.push(OUTPUT);
+		V3fn.new(); V3fn.set(OUTPUT,              0,  Vector3[r2]#z, -Vector3[r2]#y); Constraint.J.push(OUTPUT);
+
+		V3fn.new(); V3fn.set(OUTPUT,              0,             -1,              0); Constraint.J.push(OUTPUT);
+		V3fn.new(); V3fn.set(OUTPUT,  Vector3[r1]#z,              0, -Vector3[r1]#x); Constraint.J.push(OUTPUT);
+		V3fn.new(); V3fn.set(OUTPUT,              0,              1,              0); Constraint.J.push(OUTPUT);
+		V3fn.new(); V3fn.set(OUTPUT, -Vector3[r2]#z,              0,  Vector3[r2]#x); Constraint.J.push(OUTPUT);
+
+		V3fn.new(); V3fn.set(OUTPUT,              0,              0,             -1); Constraint.J.push(OUTPUT);
+		V3fn.new(); V3fn.set(OUTPUT, -Vector3[r1]#y,  Vector3[r1]#x,              0); Constraint.J.push(OUTPUT);
+		V3fn.new(); V3fn.set(OUTPUT,              0,              0,              1); Constraint.J.push(OUTPUT);
+		V3fn.new(); V3fn.set(OUTPUT,  Vector3[r2]#y, -Vector3[r2]#x,              0); Constraint.J.push(OUTPUT);
+
+		sal Matrix3 skew1, skew2, r1I1, r2I2, r1I1r1T, r2I2r2T, K;
+		M3fn.setSkewSymmetric(r1, skew1);
+		M3fn.setSkewSymmetric(r2, skew2);
+		M3fn.mulMatrix3(skew1, RigidBody.inverseInertiaTensorWorld[b1], r1I1);
+		M3fn.mulMatrix3(skew2, RigidBody.inverseInertiaTensorWorld[b2], r2I2);
+		M3fn.mulTransposeMatrix3(r1I1, skew1, r1I1r1T);
+		M3fn.mulTransposeMatrix3(r2I2, skew2, r2I2r2T);
+		M3fn.addMatrix3(r1I1r1T, r2I2r2T, K);
+		let ims = RigidBody.inverseMass[b1] + RigidBody.inverseMass[b2];
+		Constraint.pushK3(ims + Matrix3[K]#1,       Matrix3[K]#4,       Matrix3[K]#7,
+								Matrix3[K]#2, ims + Matrix3[K]#5,       Matrix3[K]#8,
+								Matrix3[K]#3,       Matrix3[K]#6, ims + Matrix3[K]#9)
+
+		const biasFactor = 0.1;
+		V3fn.mul(diff, biasFactor / World.duration, diff);
+		Constraint.B.push(Vector3[diff]#x);
+		Constraint.B.push(Vector3[diff]#y);
+		Constraint.B.push(Vector3[diff]#z);
+	}
+}
+
+namespace SliderTranslationConstraint {
+	function add(b1, b2, point1, point2, n1, n2) {
+		sal Vector3 r1, r2, diff, r1u, temp, r1n1, r1n2, r2n1, r2n2;
+		const duration = World.duration;
+		const x1 = RigidBody.position[b1];
+		const x2 = RigidBody.position[b2];
+		V3fn.sub(point1, x1, r1);
+		V3fn.sub(point2, x2, r2);
+		V3fn.sub(point2, point1, diff);
+
+		Constraint.b1.push(b1);
+		Constraint.b2.push(b2);
+		Constraint.size.push(2);
+		Constraint.type.push(LambdaClampers.NONE2);
+		Constraint.ptr.push(Constraint.lambdaQ.length);
+		Constraint.invKPtr.push(Constraint.invKData.length);
+		Constraint.lambdaQ.push(0);
+		Constraint.lambdaQ.push(0);
+		Constraint.lambdaQfinal.push(0);
+		Constraint.lambdaQfinal.push(0);
+		Constraint.violation.push(0);
+		Constraint.propA.push(0);
+		Constraint.propB.push(0);
+
+		V3fn.sub(point2, x1, r1u);
+		V3fn.new();
+		V3fn.inverse(n1, OUTPUT);
+		Constraint.J.push(OUTPUT);
+		V3fn.new();
+		V3fn.cross(n1, r1u, OUTPUT);
+		Constraint.J.push(OUTPUT);
+		V3fn.new();
+		V3fn.copy(n1, OUTPUT);
+		Constraint.J.push(OUTPUT);
+		V3fn.new();
+		V3fn.cross(r2, n1, OUTPUT);
+		Constraint.J.push(OUTPUT);
+
+		V3fn.new();
+		V3fn.inverse(n2, OUTPUT);
+		Constraint.J.push(OUTPUT);
+		V3fn.new();
+		V3fn.cross(n2, r1u, OUTPUT);
+		Constraint.J.push(OUTPUT);
+		V3fn.new();
+		V3fn.copy(n2, OUTPUT);
+		Constraint.J.push(OUTPUT);
+		V3fn.new();
+		V3fn.cross(r2, n2, OUTPUT);
+		Constraint.J.push(OUTPUT);
+		
+		
+		let ims = RigidBody.inverseMass[b1] + RigidBody.inverseMass[b2];
+		V3fn.cross(r1u, n1, r1n1);
+		V3fn.cross(r2 , n1, r2n1);
+		V3fn.cross(r1u, n2, r1n2);
+		V3fn.cross(r2 , n2, r2n2);
+		V3fn.mulMat(r1n1, RigidBody.inverseInertiaTensorWorld[b1], temp); V3fn.dot(temp, r1n1); let A = OUTPUT + ims;
+		V3fn.mulMat(r1n1, RigidBody.inverseInertiaTensorWorld[b1], temp); V3fn.dot(temp, r1n2); let B = OUTPUT;
+		V3fn.mulMat(r1n2, RigidBody.inverseInertiaTensorWorld[b1], temp); V3fn.dot(temp, r1n1); let C = OUTPUT;
+		V3fn.mulMat(r1n2, RigidBody.inverseInertiaTensorWorld[b1], temp); V3fn.dot(temp, r1n2); let D = OUTPUT + ims;
+
+		V3fn.mulMat(r2n1, RigidBody.inverseInertiaTensorWorld[b2], temp); V3fn.dot(temp, r2n1); A += OUTPUT;
+		V3fn.mulMat(r2n1, RigidBody.inverseInertiaTensorWorld[b2], temp); V3fn.dot(temp, r2n2); B += OUTPUT;
+		V3fn.mulMat(r2n2, RigidBody.inverseInertiaTensorWorld[b2], temp); V3fn.dot(temp, r2n1); C += OUTPUT;
+		V3fn.mulMat(r2n2, RigidBody.inverseInertiaTensorWorld[b2], temp); V3fn.dot(temp, r2n2); D += OUTPUT;
+		Constraint.pushK2(A, B, C, D);
+
+		const biasFactor = 0.1;
+		V3fn.dot(diff, n1);
+		Constraint.B.push(OUTPUT * biasFactor / World.duration);
+		V3fn.dot(diff, n2);
+		Constraint.B.push(OUTPUT * biasFactor / World.duration);
+	}
+}
+
+namespace LockRotationConstraint {
+	function add(b1, b2, invOrigDiff) {
+		sal Quaternion aa, bb;
+		sal Vector3 v1, v2, v3, v1a, v2a, v3a, v1b, v2b, v3b;
+		const duration = World.duration;
+		const x1 = RigidBody.position[b1];
+		const x2 = RigidBody.position[b2];
+
+		Constraint.b1.push(b1);
+		Constraint.b2.push(b2);
+		Constraint.size.push(3);
+		Constraint.type.push(LambdaClampers.NONE3);
+		Constraint.ptr.push(Constraint.lambdaQ.length);
+		Constraint.invKPtr.push(Constraint.invKData.length);
+		Constraint.lambdaQ.push(0);
+		Constraint.lambdaQ.push(0);
+		Constraint.lambdaQ.push(0);
+		Constraint.lambdaQfinal.push(0);
+		Constraint.lambdaQfinal.push(0);
+		Constraint.lambdaQfinal.push(0);
+		Constraint.violation.push(0);
+		Constraint.propA.push(0);
+		Constraint.propB.push(0);
+		
+		QTfn.inverse(RigidBody.orientation[b1], aa);
+		QTfn.mul(RigidBody.orientation[b2], invOrigDiff, bb);
+		const a = Quaternion[aa];
+		const b = Quaternion[bb];
+		V3fn.set(v1, 0.5 * (- a#i*b#i + a#r*b#r + a#k*b#k + a#j*b#j), 0.5 * (- a#i*b#j + a#r*b#k - a#k*b#r - a#j*b#i), 0.5 * (- a#i*b#k - a#r*b#j - a#k*b#i + a#j*b#r));
+		V3fn.set(v2, 0.5 * (- a#j*b#i + a#k*b#r - a#r*b#k - a#i*b#j), 0.5 * (- a#j*b#j + a#k*b#k + a#r*b#r + a#i*b#i), 0.5 * (- a#j*b#k - a#k*b#j + a#r*b#i - a#i*b#r));
+		V3fn.set(v3, 0.5 * (- a#k*b#i - a#j*b#r - a#i*b#k + a#r*b#j), 0.5 * (- a#k*b#j - a#j*b#k + a#i*b#r - a#r*b#i), 0.5 * (- a#k*b#k + a#j*b#j + a#i*b#i + a#r*b#r));
+
+		Constraint.J.push(V3fn.zero);
+		V3fn.new(); V3fn.inverse(v1, OUTPUT); Constraint.J.push(OUTPUT);
+		Constraint.J.push(V3fn.zero);
+		V3fn.new(); V3fn.copy(v1, OUTPUT); Constraint.J.push(OUTPUT);
+
+		Constraint.J.push(V3fn.zero);
+		V3fn.new(); V3fn.inverse(v2, OUTPUT); Constraint.J.push(OUTPUT);
+		Constraint.J.push(V3fn.zero);
+		V3fn.new(); V3fn.copy(v2, OUTPUT); Constraint.J.push(OUTPUT);
+
+		Constraint.J.push(V3fn.zero);
+		V3fn.new(); V3fn.inverse(v3, OUTPUT); Constraint.J.push(OUTPUT);
+		Constraint.J.push(V3fn.zero);
+		V3fn.new(); V3fn.copy(v3, OUTPUT); Constraint.J.push(OUTPUT);
+
+		const ia = RigidBody.inverseInertiaTensorWorld[b1];
+		const ib = RigidBody.inverseInertiaTensorWorld[b2];
+		V3fn.mulMat(v1, ia, v1a);
+		V3fn.mulMat(v2, ia, v2a);
+		V3fn.mulMat(v3, ia, v3a);
+		V3fn.mulMat(v1, ib, v1b);
+		V3fn.mulMat(v2, ib, v2b);
+		V3fn.mulMat(v3, ib, v3b);
+
+		V3fn.dot(v1a, v1);
+		let A = OUTPUT;
+		V3fn.dot(v1b, v1);
+		A += OUTPUT;
+
+		V3fn.dot(v1a, v2);
+		let B = OUTPUT;
+		V3fn.dot(v1b, v2);
+		B += OUTPUT;
+
+		V3fn.dot(v1a, v3);
+		let C = OUTPUT;
+		V3fn.dot(v1b, v3);
+		C += OUTPUT;
+
+		V3fn.dot(v2a, v1);
+		let D = OUTPUT;
+		V3fn.dot(v2b, v1);
+		D += OUTPUT;
+
+		V3fn.dot(v2a, v2);
+		let E = OUTPUT;
+		V3fn.dot(v2b, v2);
+		E += OUTPUT;
+
+		V3fn.dot(v2a, v3);
+		let F = OUTPUT;
+		V3fn.dot(v2b, v3);
+		F += OUTPUT;
+
+		V3fn.dot(v3a, v1);
+		let G = OUTPUT;
+		V3fn.dot(v3b, v1);
+		G += OUTPUT;
+
+		V3fn.dot(v3a, v2);
+		let H = OUTPUT;
+		V3fn.dot(v3b, v2);
+		H += OUTPUT;
+
+		V3fn.dot(v3a, v3);
+		let I = OUTPUT;
+		V3fn.dot(v3b, v3);
+		I += OUTPUT;
+
+		Constraint.pushK3(A, B, C, D, E, F, G, H, I);
+
+		QTfn.mul(aa, RigidBody.orientation[b2], bb);
+		QTfn.mul(bb, invOrigDiff, aa);
+		const biasFactor = 0.1;
+		Constraint.B.push(Quaternion[aa]#i * biasFactor / World.duration);
+		Constraint.B.push(Quaternion[aa]#j * biasFactor / World.duration);
+		Constraint.B.push(Quaternion[aa]#k * biasFactor / World.duration);
+	}
+}
+
+namespace MotorAlongAxisConstraint {
+	function add(b1, b2, axis, targetVelocity, forceLimit) {
+		const x1 = RigidBody.position[b1];
+		const x2 = RigidBody.position[b2];
+
+		Constraint.b1.push(b1);
+		Constraint.b2.push(b2);
+		Constraint.size.push(1);
+		Constraint.type.push(LambdaClampers.SIMPLELIMIT);
+		Constraint.ptr.push(Constraint.lambdaQ.length);
+		Constraint.invKPtr.push(Constraint.invKData.length);
+		Constraint.lambdaQ.push(0);
+		Constraint.lambdaQfinal.push(0);
+		Constraint.violation.push(0);
+		Constraint.propA.push(forceLimit);
+		Constraint.propB.push(0);
+
+		V3fn.new(); V3fn.copy(axis, OUTPUT); Constraint.J.push(OUTPUT);
+		Constraint.J.push(V3fn.zero);
+		V3fn.new(); V3fn.inverse(axis, OUTPUT); Constraint.J.push(OUTPUT);
+		Constraint.J.push(V3fn.zero);
+
+		Constraint.pushK1(RigidBody.inverseMass[b1] + RigidBody.inverseMass[b2]);
+		Constraint.B.push(targetVelocity);
+	}
+}
+
+namespace OneAxisRotationConstraint {
+	function add(b1, b2, axis1, axis2) {
+		sal Vector3 b, c, bxa1, cxa1, bxa1iit1, bxa1iit2, cxa1iit1, cxa1iit2;
+		const x1 = RigidBody.position[b1];
+		const x2 = RigidBody.position[b2];
+
+		Constraint.b1.push(b1);
+		Constraint.b2.push(b2);
+		Constraint.size.push(2);
+		Constraint.type.push(LambdaClampers.NONE2);
+		Constraint.ptr.push(Constraint.lambdaQ.length);
+		Constraint.invKPtr.push(Constraint.invKData.length);
+		Constraint.lambdaQ.push(0);
+		Constraint.lambdaQ.push(0);
+		Constraint.lambdaQfinal.push(0);
+		Constraint.lambdaQfinal.push(0);
+		Constraint.violation.push(0);
+		Constraint.propA.push(0);
+		Constraint.propB.push(0);
+
+		V3fn.tangents(axis2, b, c);
+		V3fn.cross(b, axis1, bxa1);
+		V3fn.cross(c, axis1, cxa1);
+
+		Constraint.J.push(V3fn.zero);
+		V3fn.new(); V3fn.inverse(bxa1, OUTPUT); Constraint.J.push(OUTPUT);
+		Constraint.J.push(V3fn.zero);
+		V3fn.new(); V3fn.copy(bxa1, OUTPUT); Constraint.J.push(OUTPUT);
+
+		Constraint.J.push(V3fn.zero);
+		V3fn.new(); V3fn.inverse(cxa1, OUTPUT); Constraint.J.push(OUTPUT);
+		Constraint.J.push(V3fn.zero);
+		V3fn.new(); V3fn.copy(cxa1, OUTPUT); Constraint.J.push(OUTPUT);
+
+		V3fn.mulMat(bxa1, RigidBody.inverseInertiaTensorWorld[b1], bxa1iit1);
+		V3fn.mulMat(bxa1, RigidBody.inverseInertiaTensorWorld[b2], bxa1iit2);
+		V3fn.mulMat(cxa1, RigidBody.inverseInertiaTensorWorld[b1], cxa1iit1);
+		V3fn.mulMat(cxa1, RigidBody.inverseInertiaTensorWorld[b2], cxa1iit2);
+
+		V3fn.dot(bxa1iit1, bxa1); let A = OUTPUT; V3fn.dot(bxa1iit2, bxa1); A += OUTPUT;
+		V3fn.dot(bxa1iit1, cxa1); let B = OUTPUT; V3fn.dot(bxa1iit2, cxa1); B += OUTPUT;
+		V3fn.dot(cxa1iit1, bxa1); let C = OUTPUT; V3fn.dot(cxa1iit2, bxa1); C += OUTPUT;
+		V3fn.dot(cxa1iit1, cxa1); let D = OUTPUT; V3fn.dot(cxa1iit2, cxa1); D += OUTPUT;
+
+		Constraint.pushK2(A, B, C, D);
+
+		const biasFactor = 0.1;
+		V3fn.dot(axis1, b);
+		Constraint.B.push(OUTPUT * biasFactor / World.duration);
+		V3fn.dot(axis1, c);
+		Constraint.B.push(OUTPUT * biasFactor / World.duration);
+	}
+}
+
+namespace TwoAxisRotationConstraint {
+	function add(b1, b2, axis1, axis2, offset) {
+		sal Vector3 axa, axaiit;
+		const x1 = RigidBody.position[b1];
+		const x2 = RigidBody.position[b2];
+
+		Constraint.b1.push(b1);
+		Constraint.b2.push(b2);
+		Constraint.size.push(1);
+		Constraint.type.push(LambdaClampers.NONE1);
+		Constraint.ptr.push(Constraint.lambdaQ.length);
+		Constraint.invKPtr.push(Constraint.invKData.length);
+		Constraint.lambdaQ.push(0);
+		Constraint.lambdaQfinal.push(0);
+		Constraint.violation.push(0);
+		Constraint.propA.push(0);
+		Constraint.propB.push(0);
+
+		V3fn.cross(axis1, axis2, axa);
+
+		Constraint.J.push(V3fn.zero);
+		V3fn.new(); V3fn.copy(axa, OUTPUT); Constraint.J.push(OUTPUT);
+		Constraint.J.push(V3fn.zero);
+		V3fn.new(); V3fn.inverse(axa, OUTPUT); Constraint.J.push(OUTPUT);
+
+		V3fn.mulMat(axa, RigidBody.inverseInertiaTensorWorld[b1], axaiit);
+		V3fn.dot(axaiit, axa); 
+		let OUTPUT2 = OUTPUT;
+		V3fn.mulMat(axa, RigidBody.inverseInertiaTensorWorld[b2], axaiit);
+		V3fn.dot(axaiit, axa); 
+		Constraint.pushK1(OUTPUT2 + OUTPUT);
+
+		const biasFactor = 0.1;
+		V3fn.dot(axis1, axis2);
+		Constraint.B.push((OUTPUT - offset) * biasFactor / World.duration);
+	}
+}
+
+namespace LimitAroundAxisConstraint {
+	function add(b1, b2, axis, limit) {
+		sal Vector3 temp;
+		sal Quaternion invB1, diff;
+		const x1 = RigidBody.position[b1];
+		const x2 = RigidBody.position[b2];
+
+		Constraint.b1.push(b1);
+		Constraint.b2.push(b2);
+		Constraint.size.push(1);
+		Constraint.type.push(LambdaClampers.POSITIVE);
+		Constraint.ptr.push(Constraint.lambdaQ.length);
+		Constraint.invKPtr.push(Constraint.invKData.length);
+		Constraint.lambdaQ.push(0);
+		Constraint.lambdaQfinal.push(0);
+		Constraint.violation.push(0);
+		Constraint.propA.push(0);
+		Constraint.propB.push(0);
+
+		Constraint.J.push(V3fn.zero);
+		V3fn.new(); V3fn.copy(axis, OUTPUT); Constraint.J.push(OUTPUT);
+		Constraint.J.push(V3fn.zero);
+		V3fn.new(); V3fn.inverse(axis, OUTPUT); Constraint.J.push(OUTPUT);
+
+		V3fn.mulMat(axis, RigidBody.inverseInertiaTensorWorld[b1], temp);
+		V3fn.dot(temp, axis);
+		let OUTPUT2 = OUTPUT;
+		V3fn.mulMat(axis, RigidBody.inverseInertiaTensorWorld[b2], temp);
+		V3fn.dot(temp, axis);
+		Constraint.pushK1(OUTPUT2 + OUTPUT);
+
+		let sin = Math.sin(limit);
+		QTfn.inverse(RigidBody.orientation[b1], invB1);
+		QTfn.mul(RigidBody.orientation[b2], invB1, diff);
+		QTfn.toVector3(diff, temp);
+		V3fn.dot(temp, axis);
+		let angle = Math.asin(OUTPUT) * 2;
+		let angleLimited = angle;
+		if(angleLimited > limit) angleLimited = limit;
+		Constraint.B.push(Math.radians(angleLimited - angle) * 0.1);
+	}
+}
+
+namespace SharedMotionConstraint {
+	function add(b1, b2, vel1, rot1, vel2, rot2) {
+		sal Vector3 temp;
+		const x1 = RigidBody.position[b1];
+		const x2 = RigidBody.position[b2];
+
+		Constraint.b1.push(b1);
+		Constraint.b2.push(b2);
+		Constraint.size.push(1);
+		Constraint.type.push(LambdaClampers.NONE1);
+		Constraint.ptr.push(Constraint.lambdaQ.length);
+		Constraint.invKPtr.push(Constraint.invKData.length);
+		Constraint.lambdaQ.push(0);
+		Constraint.lambdaQfinal.push(0);
+		Constraint.violation.push(0);
+		Constraint.propA.push(0);
+		Constraint.propB.push(0);
+
+		V3fn.new(); V3fn.copy(vel1, OUTPUT); Constraint.J.push(OUTPUT);
+		V3fn.new(); V3fn.copy(rot1, OUTPUT); Constraint.J.push(OUTPUT);
+		V3fn.new(); V3fn.inverse(vel2, OUTPUT); Constraint.J.push(OUTPUT);
+		V3fn.new(); V3fn.inverse(rot2, OUTPUT); Constraint.J.push(OUTPUT);
+
+		V3fn.dot(vel1, vel1);
+		let OUTPUT2 = RigidBody.inverseMass[b1] * OUTPUT;
+
+		V3fn.mulMat(rot1, RigidBody.inverseInertiaTensorWorld[b1], temp);
+		V3fn.dot(temp, rot1);
+		OUTPUT2 += OUTPUT;
+
+		V3fn.dot(vel2, vel2);
+		OUTPUT2 += RigidBody.inverseMass[b2] * OUTPUT;
+
+		V3fn.mulMat(rot2, RigidBody.inverseInertiaTensorWorld[b2], temp);
+		V3fn.dot(temp, rot2);
+		Constraint.pushK1(OUTPUT2 + OUTPUT);
+
+		Constraint.B.push(0);
+	}
+}
+
+namespace MotorAroundAxisConstraint {
+	function add(b1, b2, axis, targetVelocity, forceLimit) {
+		sal Vector3 temp;
+		const x1 = RigidBody.position[b1];
+		const x2 = RigidBody.position[b2];
+
+		Constraint.b1.push(b1);
+		Constraint.b2.push(b2);
+		Constraint.size.push(1);
+		Constraint.type.push(LambdaClampers.SIMPLELIMIT);
+		Constraint.ptr.push(Constraint.lambdaQ.length);
+		Constraint.invKPtr.push(Constraint.invKData.length);
+		Constraint.lambdaQ.push(0);
+		Constraint.lambdaQfinal.push(0);
+		Constraint.violation.push(0);
+		Constraint.propA.push(forceLimit);
+		Constraint.propB.push(0);
+
+		Constraint.J.push(V3fn.zero);
+		V3fn.new(); V3fn.copy(axis, OUTPUT); Constraint.J.push(OUTPUT);
+		Constraint.J.push(V3fn.zero);
+		V3fn.new(); V3fn.inverse(axis, OUTPUT); Constraint.J.push(OUTPUT);
+
+		V3fn.mulMat(axis, RigidBody.inverseInertiaTensorWorld[b1], temp);
+		V3fn.dot(temp, axis);
+		let OUTPUT2 = OUTPUT;
+		V3fn.mulMat(axis, RigidBody.inverseInertiaTensorWorld[b2], temp);
+		V3fn.dot(temp, axis);
+		Constraint.pushK1(OUTPUT2 + OUTPUT);
+		Constraint.B.push(targetVelocity);
+	}
+}
+
+namespace CenterDistanceConstraint {
+	function add(b1, b2, length) {
+		sal Vector3 posDiff, n;
+		const x1 = RigidBody.position[b1];
+		const x2 = RigidBody.position[b2];
+		V3fn.sub(x2, x1, posDiff);
+		V3fn.normalize(posDiff, n);
+
+		Constraint.b1.push(b1);
+		Constraint.b2.push(b2);
+		Constraint.size.push(1);
+		Constraint.type.push(LambdaClampers.NONE1);
+		Constraint.ptr.push(Constraint.lambdaQ.length);
+		Constraint.invKPtr.push(Constraint.invKData.length);
+		Constraint.lambdaQ.push(0);
+		Constraint.lambdaQfinal.push(0);
+		Constraint.violation.push(0);
+		Constraint.propA.push(0);
+		Constraint.propB.push(0);
+
+		V3fn.new();
+		V3fn.inverse(n, OUTPUT);
+		Constraint.J.push(OUTPUT);
+		Constraint.J.push(V3fn.zero);
+		V3fn.new();
+		V3fn.copy(n, OUTPUT);
+		Constraint.J.push(OUTPUT);
+		Constraint.J.push(V3fn.zero);
+
+		Constraint.pushK1(RigidBody.inverseMass[b1] + RigidBody.inverseMass[b2]);
+		V3fn.magnitude(posDiff);
+		Constraint.B.push((OUTPUT - length) * 0.1);
+	}
+}
+
+namespace PointDistanceConstraint {
+	function add(b1, b2, point1, point2, length) {
+		sal Vector3 r1, r2, n, pointDiff, r1_x_n, r2_x_n, temp;
+		let OUTPUT2;
+		const x1 = RigidBody.position[b1];
+		const x2 = RigidBody.position[b2];
+		V3fn.sub(point1, x1, r1);
+		V3fn.sub(point2, x2, r2);
+		V3fn.sub(point2, point1, n);
+		V3fn.normalize(n, n);
+		V3fn.sub(point2, point1, pointDiff);
+		V3fn.cross(r1, n, r1_x_n);
+		V3fn.cross(r2, n, r2_x_n);
+
+		Constraint.b1.push(b1);
+		Constraint.b2.push(b2);
+		Constraint.size.push(1);
+		Constraint.type.push(LambdaClampers.NONE1);
+		Constraint.ptr.push(Constraint.lambdaQ.length);
+		Constraint.invKPtr.push(Constraint.invKData.length);
+		Constraint.lambdaQ.push(0);
+		Constraint.lambdaQfinal.push(0);
+		Constraint.violation.push(0);
+		Constraint.propA.push(0);
+		Constraint.propB.push(0);
+
+		V3fn.new();
+		V3fn.inverse(n, OUTPUT);
+		Constraint.J.push(OUTPUT);
+		V3fn.new();
+		V3fn.inverse(r1_x_n, OUTPUT);
+		Constraint.J.push(OUTPUT);
+		V3fn.new();
+		V3fn.copy(n, OUTPUT);
+		Constraint.J.push(OUTPUT);
+		V3fn.new();
+		V3fn.copy(r2_x_n, OUTPUT);
+		Constraint.J.push(OUTPUT);
+
+		V3fn.mulMat(r1_x_n, RigidBody.inverseInertiaTensorWorld[b1], temp);
+		V3fn.dot(temp, r1_x_n);
+		OUTPUT2 = OUTPUT;
+		V3fn.mulMat(r2_x_n, RigidBody.inverseInertiaTensorWorld[b2], temp);
+		V3fn.dot(temp, r2_x_n);
+		Constraint.pushK1(RigidBody.inverseMass[b1] + RigidBody.inverseMass[b2] + OUTPUT2 + OUTPUT);
+		V3fn.magnitude(pointDiff);
+		Constraint.B.push((OUTPUT - length) * 0.1);
+	}
+}

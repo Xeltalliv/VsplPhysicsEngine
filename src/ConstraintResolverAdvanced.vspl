@@ -1,0 +1,172 @@
+namespace ConstraintResolver {
+	list all;
+
+	namespace LL {
+		list constr;
+		list next;
+	}
+
+	function resolveConstraintsAdvanced() {
+		let length = Constraint.size.length;
+		if(length == 0) return;
+
+		// Precalculate constant values
+		LL.constr.clear();
+		LL.next.clear();
+		all.clear();
+		for(let i; length) {
+			measureConstraint(i);
+			//applyConstraintResolution(i);
+
+			let b1 = Constraint.b1[i];
+			let b2 = Constraint.b2[i];
+
+			LL.constr.push(i);
+			LL.next.push(RigidBody.constraints[b1]);
+			RigidBody.constraints[b1] = LL.constr.length;
+
+			LL.constr.push(i);
+			LL.next.push(RigidBody.constraints[b2]);
+			RigidBody.constraints[b2] = LL.constr.length;
+
+			// Sorting constraints by how much they are violated from biggest to lowest
+			let j=1;
+			until(Constraint.violation[i] > Constraint.violation[all[j]] || j > length) {
+				j += 1;
+			}
+			all.insert(j, i);
+		}
+
+		const iterations = iterations * length; // Here iterations is taken from a global scope (see ConstraintResolver.vspl) and a local const is created
+		let start = 0;
+
+		repeat(iterations) {
+			let c = all[start+1];
+			if(Constraint.violation[c] < 0.0001) return;
+
+			applyConstraintResolution(c);
+			Constraint.violation[c] = 0;
+			start += 1;
+			if(start == length) start = 0;
+
+			let now = RigidBody.constraints[Constraint.b1[c]];
+			until(now == -1) {
+				measureConstraint(LL.constr[now]);
+				now = LL.next[now];
+			}
+
+			now = RigidBody.constraints[Constraint.b2[c]];
+			until(now == -1) {
+				measureConstraint(LL.constr[now]);
+				now = LL.next[now];
+			}
+
+			let i = start;
+			let j, k;
+			repeat(length) {
+				if(i == length) i = 0;
+				i += 1;
+				j = i;
+				k = j - 1;
+				until(Constraint.violation[all[k]] > Constraint.violation[all[j]] || k == start) {
+					if(k == 0) k = length;
+					let temp = all[j];
+					all[j] = all[k];
+					all[k] = temp;
+					j = k;
+					k -= 1;
+				}
+			}
+		}
+	}
+	function applyConstraintResolution(c) {
+		let b1 = Constraint.b1[c];
+		let b2 = Constraint.b2[c];
+		let ptr = Constraint.ptr[c];
+		const J = Constraint.J;
+		const N = Constraint.size[c];
+
+		//Getting linear and angualr velocities of bodies
+		let v1 = RigidBody.velocity[b1];
+		let w1 = RigidBody.rotation[b1];
+		let v2 = RigidBody.velocity[b2];
+		let w2 = RigidBody.rotation[b2];
+
+		let a = ptr;
+		let aa = ptr*4;
+		repeat(N) {
+			sal Vector3 tempVec;
+			a += 1;
+			let difference = Constraint.lambdaQ[a] - Constraint.lambdaQfinal[a];
+			Constraint.lambdaQfinal[a] = Constraint.lambdaQ[a];
+			V3fn.addScaled(v1, J[aa]#1, difference * RigidBody.inverseMass[b1], v1);
+			M3fn.transform(RigidBody.inverseInertiaTensorWorld[b1], J[aa]#2, tempVec);
+			V3fn.addScaled(w1, tempVec, difference, w1);
+			V3fn.addScaled(v2, J[aa]#3, difference * RigidBody.inverseMass[b2], v2);
+			M3fn.transform(RigidBody.inverseInertiaTensorWorld[b2], J[aa]#4, tempVec);
+			V3fn.addScaled(w2, tempVec, difference, w2);
+			aa += 4;
+		}
+	}
+	function measureConstraint(c) {
+		let b1 = Constraint.b1[c];
+		let b2 = Constraint.b2[c];
+		let ptr = Constraint.ptr[c];
+		let invK = Constraint.invKPtr[c];
+		const J = Constraint.J;
+		let N = Constraint.size[c];
+
+		//Getting linear and angualr velocities of bodies
+		let v1 = RigidBody.velocity[b1];
+		let w1 = RigidBody.rotation[b1];
+		let v2 = RigidBody.velocity[b2];
+		let w2 = RigidBody.rotation[b2];
+
+
+		//Calculating J * v + b    (result is vertical vector)
+		// J is mostly horizontal matrix with horizontal matricies inside
+		// v is always vertical matrix filled with vertical vector elements
+		lst Jv_b = [];
+
+		let j = ptr;
+		repeat(N) {
+			let j4 = j * 4;
+			let OUTPUT_ACCUM = 0;
+			V3fn.dot(J[j4]#1, v1);
+			OUTPUT_ACCUM += OUTPUT;
+			V3fn.dot(J[j4]#2, w1);
+			OUTPUT_ACCUM += OUTPUT;
+			V3fn.dot(J[j4]#3, v2);
+			OUTPUT_ACCUM += OUTPUT;
+			V3fn.dot(J[j4]#4, w2);
+			OUTPUT_ACCUM += OUTPUT;
+			OUTPUT_ACCUM += Constraint.B[j+1];
+			Jv_b.push(OUTPUT_ACCUM);
+			j += 1;
+		}
+
+		//What we are supposted to do:
+		// lambda' = - K^-1 * (J * v_current + b)
+		// P = J^T * lambda'
+		//What we really do:
+		// lambdaQ = - invK * Jv_b    (result is vertical matrix)
+		// v1 += J[a][0] * lambdaQ[a]
+		// w1 += J[a][1] * lambdaQ[a]
+		// v2 += J[a][2] * lambdaQ[a]
+		// w2 += J[a][3] * lambdaQ[a]
+		unclamped = [];
+		for(let a; N) {
+			let sum = 0;
+			for(let b; N) {
+				sum += Constraint.invKData[invK+(a-1)*N+b] * Jv_b[b];
+			}
+			unclamped.push(Constraint.lambdaQfinal[ptr+a] - sum);
+		}
+		Constraint.clampLambdas(c, ptr);
+		let violation = 0;
+		for(let a; N) {
+			violation += Math.abs(Constraint.lambdaQfinal[ptr+a] - Constraint.lambdaQ[ptr+a]);
+		}
+		Constraint.violation[c] = violation;
+	}
+}

@@ -1,0 +1,225 @@
+list Matrix3;
+listoffsets Matrix3 9;
+
+namespace M3fn "Matrix3 | "{
+	variable free;
+	function new() {
+		if(free > -1) {
+			OUTPUT = free;
+			free = Matrix3[free]#1;
+			Matrix3[OUTPUT]#1 = 1;
+			Matrix3[OUTPUT]#2 = 0;
+			Matrix3[OUTPUT]#3 = 0;
+			Matrix3[OUTPUT]#4 = 0;
+			Matrix3[OUTPUT]#5 = 1;
+			Matrix3[OUTPUT]#6 = 0;
+			Matrix3[OUTPUT]#7 = 0;
+			Matrix3[OUTPUT]#8 = 0;
+			Matrix3[OUTPUT]#9 = 1;
+		} else {
+			OUTPUT = Matrix3.length;
+			Matrix3.push(1);
+			Matrix3.push(0);
+			Matrix3.push(0);
+			Matrix3.push(0);
+			Matrix3.push(1);
+			Matrix3.push(0);
+			Matrix3.push(0);
+			Matrix3.push(0);
+			Matrix3.push(1);
+		}
+	}
+	function delete(elem) {
+		Matrix3[elem]#1 = free;
+		free = elem;
+	}
+
+	function identity(m1) {
+		M3fn.set(m1, 1,0,0, 0,1,0, 0,0,1);
+	}
+	function set(m1, a, b, c, d, e, f, g, h, i) {
+		Matrix3[m1]#1 = a;
+		Matrix3[m1]#2 = b;
+		Matrix3[m1]#3 = c;
+		Matrix3[m1]#4 = d;
+		Matrix3[m1]#5 = e;
+		Matrix3[m1]#6 = f;
+		Matrix3[m1]#7 = g;
+		Matrix3[m1]#8 = h;
+		Matrix3[m1]#9 = i;
+	}
+	function transform(m1, v1, v2) {
+		Vector3[v2]#x = Vector3[v1]#x * Matrix3[m1]#1 + Vector3[v1]#y * Matrix3[m1]#2 + Vector3[v1]#z * Matrix3[m1]#3;
+		Vector3[v2]#y = Vector3[v1]#x * Matrix3[m1]#4 + Vector3[v1]#y * Matrix3[m1]#5 + Vector3[v1]#z * Matrix3[m1]#6;
+		Vector3[v2]#z = Vector3[v1]#x * Matrix3[m1]#7 + Vector3[v1]#y * Matrix3[m1]#8 + Vector3[v1]#z * Matrix3[m1]#9;
+	}
+	function transformTranspose(m1, v1, v2) {
+		Vector3[v2]#x = Vector3[v1]#x * Matrix3[m1]#1 + Vector3[v1]#y * Matrix3[m1]#4 + Vector3[v1]#z * Matrix3[m1]#7;
+		Vector3[v2]#y = Vector3[v1]#x * Matrix3[m1]#2 + Vector3[v1]#y * Matrix3[m1]#5 + Vector3[v1]#z * Matrix3[m1]#8;
+		Vector3[v2]#z = Vector3[v1]#x * Matrix3[m1]#3 + Vector3[v1]#y * Matrix3[m1]#6 + Vector3[v1]#z * Matrix3[m1]#9;
+	}
+	function mulMatrix3(m1, m2, m3) {
+		const a = Matrix3[m1]#1;
+		const b = Matrix3[m2]#1;
+		const c = Matrix3[m3]#1;
+
+		c#0 = a#0 * b#0 + a#1 * b#3 + a#2 * b#6;
+		c#1 = a#0 * b#1 + a#1 * b#4 + a#2 * b#7;
+		c#2 = a#0 * b#2 + a#1 * b#5 + a#2 * b#8;
+		c#3 = a#3 * b#0 + a#4 * b#3 + a#5 * b#6;
+		c#4 = a#3 * b#1 + a#4 * b#4 + a#5 * b#7;
+		c#5 = a#3 * b#2 + a#4 * b#5 + a#5 * b#8;
+		c#6 = a#6 * b#0 + a#7 * b#3 + a#8 * b#6;
+		c#7 = a#6 * b#1 + a#7 * b#4 + a#8 * b#7;
+		c#8 = a#6 * b#2 + a#7 * b#5 + a#8 * b#8;
+	}
+	function mulTransposeMatrix3(m1, m2, m3) {
+		const a = Matrix3[m1]#1;
+		const b = Matrix3[m2]#1;
+		const c = Matrix3[m3]#1;
+
+		c#0 = a#0 * b#0 + a#1 * b#1 + a#2 * b#2;
+		c#1 = a#0 * b#3 + a#1 * b#4 + a#2 * b#5;
+		c#2 = a#0 * b#6 + a#1 * b#7 + a#2 * b#8;
+		c#3 = a#3 * b#0 + a#4 * b#1 + a#5 * b#2;
+		c#4 = a#3 * b#3 + a#4 * b#4 + a#5 * b#5;
+		c#5 = a#3 * b#6 + a#4 * b#7 + a#5 * b#8;
+		c#6 = a#6 * b#0 + a#7 * b#1 + a#8 * b#2;
+		c#7 = a#6 * b#3 + a#7 * b#4 + a#8 * b#5;
+		c#8 = a#6 * b#6 + a#7 * b#7 + a#8 * b#8;
+	}
+	function mulScalar(m1, scalar, m2) {
+		const a = Matrix3[m1]#1;
+		const b = Matrix3[m2]#1;
+
+		b#0 = a#0 * scalar;
+		b#1 = a#1 * scalar;
+		b#2 = a#2 * scalar;
+		b#3 = a#3 * scalar;
+		b#4 = a#4 * scalar;
+		b#5 = a#5 * scalar;
+		b#6 = a#6 * scalar;
+		b#7 = a#7 * scalar;
+		b#8 = a#8 * scalar;
+	}
+	function addMatrix3(m1, m2, m3) {
+		const a = Matrix3[m1]#1;
+		const b = Matrix3[m2]#1;
+		const c = Matrix3[m3]#1;
+
+		c#0 = a#0 + b#0;
+		c#1 = a#1 + b#1;
+		c#2 = a#2 + b#2;
+		c#3 = a#3 + b#3;
+		c#4 = a#4 + b#4;
+		c#5 = a#5 + b#5;
+		c#6 = a#6 + b#6;
+		c#7 = a#7 + b#7;
+		c#8 = a#8 + b#8;
+	}
+	function setInverse(m1, m2) {
+		const m  = Matrix3[m1]#1;
+		const mm = Matrix3[m2]#1;
+
+		let t4 = m#0 * m#4;
+		let t6 = m#0 * m#5;
+		let t8 = m#1 * m#3;
+		let t10 = m#2 * m#3;
+		let t12 = m#1 * m#6;
+		let t14 = m#2 * m#6;
+
+		let t16 = (t4*m#8 - t6*m#7 - t8*m#8 + t10*m#7 + t12*m#5 - t14*m#4);
+
+		if(t16 == 0) return;
+		let t17 = 1 / t16;
+
+		mm#0 =  (m#4 * m#8 - m#5 * m#7) * t17;
+		mm#1 = -(m#1 * m#8 - m#2 * m#7) * t17;
+		mm#2 =  (m#1 * m#5 - m#2 * m#4) * t17;
+		mm#3 = -(m#3 * m#8 - m#5 * m#6) * t17;
+		mm#4 =  (m#0 * m#8 - t14)       * t17;
+		mm#5 = -(t6 - t10)              * t17;
+		mm#6 =  (m#3 * m#7 - m#4 * m#6) * t17;
+		mm#7 = -(m#0 * m#7 - t12)       * t17;
+		mm#8 =  (t4 - t8)               * t17;
+	}
+	function copy(m1, m2) {
+		Matrix3[m2]#1 = Matrix3[m1]#1;
+		Matrix3[m2]#2 = Matrix3[m1]#2;
+		Matrix3[m2]#3 = Matrix3[m1]#3;
+		Matrix3[m2]#4 = Matrix3[m1]#4;
+		Matrix3[m2]#5 = Matrix3[m1]#5;
+		Matrix3[m2]#6 = Matrix3[m1]#6;
+		Matrix3[m2]#7 = Matrix3[m1]#7;
+		Matrix3[m2]#8 = Matrix3[m1]#8;
+		Matrix3[m2]#9 = Matrix3[m1]#9;
+	}
+	function setTranspose(m1, m2) {
+		Matrix3[m2]#1 = Matrix3[m1]#1;
+		Matrix3[m2]#2 = Matrix3[m1]#4;
+		Matrix3[m2]#3 = Matrix3[m1]#7;
+		Matrix3[m2]#4 = Matrix3[m1]#2;
+		Matrix3[m2]#5 = Matrix3[m1]#5;
+		Matrix3[m2]#6 = Matrix3[m1]#8;
+		Matrix3[m2]#7 = Matrix3[m1]#3;
+		Matrix3[m2]#8 = Matrix3[m1]#6;
+		Matrix3[m2]#9 = Matrix3[m1]#9;
+	}
+	function setOrientation(qat, m) {
+		const q = Quaternion[qat];
+		Matrix3[m]#1 = 1 - (2*q#j*q#j + 2*q#k*q#k);
+		Matrix3[m]#2 =      2*q#i*q#j + 2*q#k*q#r;
+		Matrix3[m]#3 =      2*q#i*q#k - 2*q#j*q#r;
+		Matrix3[m]#4 =      2*q#i*q#j - 2*q#k*q#r;
+		Matrix3[m]#5 = 1 - (2*q#i*q#i + 2*q#k*q#k);
+		Matrix3[m]#6 =      2*q#j*q#k + 2*q#i*q#r;
+		Matrix3[m]#7 =      2*q#i*q#k + 2*q#j*q#r;
+		Matrix3[m]#8 =      2*q#j*q#k - 2*q#i*q#r;
+		Matrix3[m]#9 = 1 - (2*q#i*q#i + 2*q#j*q#j);
+	}
+	function setInertiaTensorCoeffs(m, ix, iy, iz, ixy, ixz, iyz) {
+		Matrix3[m]#1 = ix;
+		Matrix3[m]#2 = -ixy;
+		Matrix3[m]#3 = -ixz;
+		Matrix3[m]#4 = -ixy;
+		Matrix3[m]#5 = iy;
+		Matrix3[m]#6 = -iyz;
+		Matrix3[m]#7 = -ixz;
+		Matrix3[m]#8 = -iyz;
+		Matrix3[m]#9 = iz;
+	}
+	function setBlockInertiaTensor(matrix, halfSizes, mass) {
+		sal Vector3 squares;
+		let massBy03 = 0.3 * mass;
+
+		V3fn.componentProduct(halfSizes, halfSizes, squares);
+		M3fn.setInertiaTensorCoeffs(matrix,
+									massBy03*(Vector3[squares]#y + Vector3[squares]#z),
+									massBy03*(Vector3[squares]#x + Vector3[squares]#z),
+									massBy03*(Vector3[squares]#x + Vector3[squares]#y),
+									0, 0, 0);
+	}
+	function setComponents(a, b, c, m) {
+		Matrix3[m]#1 = Vector3[a]#x;
+		Matrix3[m]#2 = Vector3[b]#x;
+		Matrix3[m]#3 = Vector3[c]#x;
+		Matrix3[m]#4 = Vector3[a]#y;
+		Matrix3[m]#5 = Vector3[b]#y;
+		Matrix3[m]#6 = Vector3[c]#y;
+		Matrix3[m]#7 = Vector3[a]#z;
+		Matrix3[m]#8 = Vector3[b]#z;
+		Matrix3[m]#9 = Vector3[c]#z;
+	}
+	//Equivalent to cross product. a x b = A_s * b
+	function setSkewSymmetric(v, m) {
+		Matrix3[m]#1 = 0;
+		Matrix3[m]#2 = -Vector3[v]#z;
+		Matrix3[m]#3 =  Vector3[v]#y;
+		Matrix3[m]#4 =  Vector3[v]#z;
+		Matrix3[m]#5 = 0;
+		Matrix3[m]#6 = -Vector3[v]#x;
+		Matrix3[m]#7 = -Vector3[v]#y;
+		Matrix3[m]#8 =  Vector3[v]#x;
+		Matrix3[m]#9 = 0;
+	}
+}

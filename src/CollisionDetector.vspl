@@ -1,0 +1,1025 @@
+namespace CollisionDetector {
+	variable restitution;
+	variable friction;
+
+	function test(a, b) {
+		let typeA = Collider.type[a];
+		let typeB = Collider.type[b];
+		restitution = (Collider.restitution[a] + Collider.restitution[b]) / 2; // This is not physically accurate, but for games good enough: https://physics.stackexchange.com/a/181242
+		friction = Math.sqrt(Collider.friction[a] * Collider.friction[b]); // Once again not accurate, but good enough
+		if(typeA < 2) {
+			if(typeA < 1) {
+				if(typeB < 2) {
+					if(typeB < 1) { // Plane - Plane
+						Collider.planePlane(a, b);
+					} else {        // Plane - Box
+						Collider.boxPlane(b, a);
+					}
+				} else {
+					if(typeB < 3) { // Plane - Sphere
+						Collider.spherePlane(b, a);
+					} else {        // Plane - Capsule
+						Collider.capsulePlane(b, a);
+					}
+				}
+			} else {
+				if(typeB < 2) {
+					if(typeB < 1) { // Box - Plane
+						Collider.boxPlane(a, b);
+					} else {        // Box - Box
+						Collider.boxBox(a, b);
+					}
+				} else {
+					if(typeB < 3) { // Box - Sphere
+						Collider.sphereBox(b, a);
+					} else {        // Box - Capsule
+						Collider.capsuleBox(b, a);
+					}
+				}
+			}
+		} else {
+			if(typeA < 3) {
+				if(typeB < 2) {
+					if(typeB < 1) { // Sphere - Plane
+						Collider.spherePlane(a, b);
+					} else {        // Sphere - Box
+						Collider.sphereBox(a, b);
+					}
+				} else {
+					if(typeB < 3) { // Sphere - Sphere
+						Collider.sphereSphere(a, b);
+					} else {        // Sphere - Capsule
+						Collider.sphereCapsule(a, b);
+					}
+				}
+			} else {
+				if(typeB < 2) {
+					if(typeB < 1) { // Capsule - Plane
+						Collider.capsulePlane(a, b);
+					} else {        // Capsule - Box
+						Collider.capsuleBox(a, b);
+					}
+				} else {
+					if(typeB < 3) { // Capsule - Sphere
+						Collider.sphereCapsule(b, a);
+					} else {        // Capsule - Capsule
+						Collider.capsuleCapsule(a, b);
+					}
+				}
+			}
+		}
+	}
+}
+namespace Collider {
+	inline function planePlane(p1, p2) {}
+	function sphereSphere(s1, s2) {
+		sal Vector3 pos1, pos2, point1, point2, midline, normal;
+		const s1Body = body[s1];
+		const s2Body = body[s2];
+		const s1Radius = propA[s1];
+		const s2Radius = propA[s2];
+
+		M4fn.getOffset(transform[s1], pos1);
+		M4fn.getOffset(transform[s2], pos2);
+		V3fn.sub(pos2, pos1, midline);
+		V3fn.magnitude(midline);
+		const size = OUTPUT;
+		if(size <= 0 || size >= s1Radius + s2Radius) return;  //TODO use
+		V3fn.div(midline, size, normal);
+		V3fn.addScaled(pos1, normal, s1Radius, point1);
+		V3fn.addScaled(pos2, normal, -s2Radius, point2);
+		Contact.add(s1Body, s2Body, point1, point2, normal);
+	}
+	function spherePlane(s1, p2) {
+		sal Vector3 pos, point1, point2, normal;
+		const s1Body = body[s1];
+		const p2Body = body[p2];
+		const s1Radius = propA[s1];
+		const p2Normal = propA[p2];
+		const p2Offset = propB[p2];
+
+		M4fn.getOffset(transform[s1], pos);
+		V3fn.dot(p2Normal, pos);
+
+		let distance = OUTPUT - p2Offset;
+		if(distance >= s1Radius) return;
+		
+		V3fn.inverse(p2Normal, normal);
+		V3fn.addScaled(pos, p2Normal, -s1Radius, point1);
+		V3fn.addScaled(pos, p2Normal, -distance, point2);
+		Contact.add(s1Body, p2Body, point1, point2, normal);
+	}
+	function sphereCapsule(s1, c2) {
+		sal Vector3 temp, pos1, pos2, pos2a, pos2b, d, w, point1, point2, normal;
+		const s1Body = body[s1];
+		const c2Body = body[c2];
+		const s1Radius = propA[s1];
+		const c2Radius = propA[c2];
+		const c2HalfSize = propB[c2];
+
+		M4fn.getOffset(transform[s1], pos1);
+		M4fn.getOffset(transform[c2], pos2a);
+		V3fn.set(temp, c2HalfSize, 0, 0);
+		M4fn.transform(transform[c2], temp, pos2b);
+
+		V3fn.sub(pos2b, pos2a, d);
+		V3fn.normalize(d, d);
+		V3fn.sub(pos1, pos2a, w);
+		V3fn.dot(w, d);
+		if(OUTPUT < -c2HalfSize) OUTPUT = -c2HalfSize;
+		if(OUTPUT >  c2HalfSize) OUTPUT =  c2HalfSize;
+		V3fn.addScaled(pos2a, d, OUTPUT, pos2);
+		V3fn.sub(pos2, pos1, normal);
+		V3fn.magnitude(normal);
+		if(OUTPUT == 0 || OUTPUT >= s1Radius + c2Radius) return;
+		V3fn.div(normal, OUTPUT, normal);
+		V3fn.addScaled(pos1, normal,  s1Radius, point1);
+		V3fn.addScaled(pos2, normal, -c2Radius, point2);
+		Contact.add(s1Body, c2Body, point1, point2, normal);
+	}
+	function capsulePlane(c1, p2) {
+		sal Vector3 temp, pos1, pos, point1, point2, normal;
+		const c1Body = body[c1];
+		const p2Body = body[p2];
+		const c1Radius = propA[c1];
+		const c1HalfSize = propB[c1];
+		const p2Normal = propA[p2];
+		const p2Offset = propB[p2];
+
+		M4fn.getOffset(transform[c1], pos1);
+		V3fn.set(temp, c1HalfSize, 0, 0);
+		M4fn.transform(transform[c1], temp, pos);
+
+		V3fn.dot(p2Normal, pos);
+		let distance = OUTPUT - p2Offset;
+		if(distance < c1Radius) {	
+			V3fn.inverse(p2Normal, normal);
+			V3fn.addScaled(pos, p2Normal, -c1Radius, point1);
+			V3fn.addScaled(pos, p2Normal, -distance, point2);
+			Contact.add(c1Body, p2Body, point1, point2, normal);
+		}
+		V3fn.sub(pos, pos1, temp);
+		V3fn.sub(pos1, temp, pos);
+		V3fn.dot(p2Normal, pos);
+		let distance = OUTPUT - p2Offset;
+		if(distance < c1Radius) {	
+			V3fn.inverse(p2Normal, normal);
+			V3fn.addScaled(pos, p2Normal, -c1Radius, point1);
+			V3fn.addScaled(pos, p2Normal, -distance, point2);
+			Contact.add(c1Body, p2Body, point1, point2, normal);
+		}
+	}
+	function boxPlane(b1, p2) {
+		checkVertex(b1, p2, -1, -1, -1);
+		checkVertex(b1, p2,  1, -1, -1);
+		checkVertex(b1, p2, -1,  1, -1);
+		checkVertex(b1, p2,  1,  1, -1);
+		checkVertex(b1, p2, -1, -1,  1);
+		checkVertex(b1, p2,  1, -1,  1);
+		checkVertex(b1, p2, -1,  1,  1);
+		checkVertex(b1, p2,  1,  1,  1);
+	}
+	function checkVertex(b1, p2, mx, my, mz) {
+		sal Vector3 orig, pos, point2, normal;
+		const b1Body = body[b1];
+		const p2Body = body[p2];
+		const b1HalfSize = propA[b1];
+		const p2Normal = propA[p2];
+		const p2Offset = propB[p2];
+
+		const hs = Vector3[b1HalfSize];
+		V3fn.set(orig, mx*hs#x, my*hs#y, mz*hs#z);
+		M4fn.transform(transform[b1], orig, pos);
+		V3fn.dot(p2Normal, pos);
+		let distance = OUTPUT - p2Offset;
+		if(distance >= 0) return;
+
+		V3fn.inverse(p2Normal, normal);
+		V3fn.addScaled(pos, p2Normal, -distance, point2);
+		Contact.add(b1Body, p2Body, pos, point2, normal);
+	}
+	function sphereBox(s1, b2) {
+		sal Vector3 posSp, relCenter, close, closeWorld, diff, point1, normal;
+		const s1Body = body[s1];
+		const b2Body = body[b2];
+		const b2HalfSize = propA[b2];
+		const s1Radius = propA[s1];
+
+		M4fn.getOffset(transform[s1], posSp);
+		M4fn.transformInverse(transform[b2], posSp, relCenter);
+		if(Math.abs(Vector3[relCenter]#x) >= s1Radius + Vector3[b2HalfSize]#x) return;
+		if(Math.abs(Vector3[relCenter]#y) >= s1Radius + Vector3[b2HalfSize]#y) return;
+		if(Math.abs(Vector3[relCenter]#z) >= s1Radius + Vector3[b2HalfSize]#z) return;
+
+		V3fn.copy(relCenter, close);
+		if(Vector3[close]#x >  Vector3[b2HalfSize]#x) Vector3[close]#x =  Vector3[b2HalfSize]#x;
+		if(Vector3[close]#y >  Vector3[b2HalfSize]#y) Vector3[close]#y =  Vector3[b2HalfSize]#y;
+		if(Vector3[close]#z >  Vector3[b2HalfSize]#z) Vector3[close]#z =  Vector3[b2HalfSize]#z;
+		if(Vector3[close]#x < -Vector3[b2HalfSize]#x) Vector3[close]#x = -Vector3[b2HalfSize]#x;
+		if(Vector3[close]#y < -Vector3[b2HalfSize]#y) Vector3[close]#y = -Vector3[b2HalfSize]#y;
+		if(Vector3[close]#z < -Vector3[b2HalfSize]#z) Vector3[close]#z = -Vector3[b2HalfSize]#z;
+
+		V3fn.sub(close, relCenter, diff);
+		V3fn.squareMagnitude(diff);
+		if(OUTPUT > s1Radius * s1Radius) return;
+		M4fn.transform(transform[b2], close, closeWorld);
+
+		if(OUTPUT == 0) {
+			//Deep penetration
+			let dist = 999999;
+			sal Vector3 move;
+			const b2hs = Vector3[b2HalfSize];
+			const relCenterV = Vector3[relCenter];
+
+			if(b2hs#x - relCenterV#x < dist) {
+				dist = b2hs#x - relCenterV#x;
+				V3fn.set(move, -dist - s1Radius, 0, 0);
+			}
+			if(b2hs#y - relCenterV#y < dist) {
+				dist = b2hs#y - relCenterV#y;
+				V3fn.set(move, 0, -dist - s1Radius, 0);
+			}
+			if(b2hs#z - relCenterV#z < dist) {
+				dist = b2hs#z - relCenterV#z;
+				V3fn.set(move, 0, 0, -dist - s1Radius);
+			}
+			if(relCenterV#x + b2hs#x < dist) {
+				dist = relCenterV#x + b2hs#x;
+				V3fn.set(move, dist + s1Radius, 0, 0);
+			}
+			if(relCenterV#y + b2hs#y < dist) {
+				dist = relCenterV#y + b2hs#y;
+				V3fn.set(move, 0, dist + s1Radius, 0);
+			}
+			if(relCenterV#z + b2hs#z < dist) {
+				dist = relCenterV#z + b2hs#z;
+				V3fn.set(move, 0, 0, dist + s1Radius);
+			}
+			M4fn.transformDirection(transform[b2], move, normal);
+		} else {
+			//Lite penetration
+			V3fn.sub(closeWorld, posSp, normal);
+		}
+		V3fn.normalize(normal, normal);
+		V3fn.addScaled(posSp, normal, s1Radius, point1);
+		Contact.add(s1Body, b2Body, point1, closeWorld, normal);
+	}
+	namespace BoxBox {
+		variable pen;
+		variable best;
+		variable noCollisionConfirmed;
+		list vertList;
+		listoffsets vertList 3 {x:1, y:2, z:3};
+	}
+	function boxBox(b1, b2) {
+		sal Vector3 pos1, pos2, toCentre, axis0b1, axis1b1, axis2b1, axis0b2, axis1b2, axis2b2, tmp;
+		const b1Body = body[b1];
+		const b2Body = body[b2];
+		const b1HalfSize = propA[b1];
+		const b2HalfSize = propA[b2];
+		const faceEpsilon = 0.01;
+
+		getAxis(b1, 0, axis0b1);
+		getAxis(b1, 1, axis1b1);
+		getAxis(b1, 2, axis2b1);
+		getAxis(b2, 0, axis0b2);
+		getAxis(b2, 1, axis1b2);
+		getAxis(b2, 2, axis2b2);
+
+		// Find the vector between the two centres
+		M4fn.getOffset(transform[b1], pos1);
+		M4fn.getOffset(transform[b2], pos2);
+		V3fn.sub(pos2, pos1, toCentre);
+
+		// We start assuming there is no contact
+		const pen = BoxBox.pen;
+		const best = BoxBox.best;
+		pen = 999999;
+		best = -1;
+
+		// Now we check each axes, returning if it gives us
+		// a separating axis, and keeping track of the axis with
+		// the smallest penetration otherwise.
+		BoxBox.noCollisionConfirmed = 0;
+		tryAxis(b1, b2, axis0b1, toCentre, 0);
+		tryAxis(b1, b2, axis1b1, toCentre, 1);
+		tryAxis(b1, b2, axis2b1, toCentre, 2);
+		tryAxis(b1, b2, axis0b2, toCentre, 3);
+		tryAxis(b1, b2, axis1b2, toCentre, 4);
+		tryAxis(b1, b2, axis2b2, toCentre, 5)
+		if(BoxBox.noCollisionConfirmed == 1) return;
+
+		// Store the best axis-major, in case we run into almost
+		// parallel edge collisions later
+		let bestSingleAxis = best;
+		pen -= faceEpsilon;
+
+
+		//        _-^-_      _^_
+		//     _-^     ^-_ _^ | ^_
+		//     |^-_   _-^||  _^_  |
+		//     |   ^-^   ||_^   ^_|
+		//     |    |    |^_     _^
+		//     ^-_  |  _-^  ^_ _^
+		//        ^-|-^       ^
+
+		V3fn.cross(axis0b1, axis0b2, tmp); tryAxis(b1, b2, tmp, toCentre,  6);
+		V3fn.cross(axis0b1, axis1b2, tmp); tryAxis(b1, b2, tmp, toCentre,  7);
+		V3fn.cross(axis0b1, axis2b2, tmp); tryAxis(b1, b2, tmp, toCentre,  8);
+		V3fn.cross(axis1b1, axis0b2, tmp); tryAxis(b1, b2, tmp, toCentre,  9);
+		V3fn.cross(axis1b1, axis1b2, tmp); tryAxis(b1, b2, tmp, toCentre, 10);
+		V3fn.cross(axis1b1, axis2b2, tmp); tryAxis(b1, b2, tmp, toCentre, 11);
+		V3fn.cross(axis2b1, axis0b2, tmp); tryAxis(b1, b2, tmp, toCentre, 12);
+		V3fn.cross(axis2b1, axis1b2, tmp); tryAxis(b1, b2, tmp, toCentre, 13);
+		V3fn.cross(axis2b1, axis2b2, tmp); tryAxis(b1, b2, tmp, toCentre, 14);
+		if(BoxBox.noCollisionConfirmed == 1) return;
+
+		// Make sure we've got a result.
+		// In this scratch port just ignoring collision instead of throwing an exception.
+		if(best == -1) return;
+
+		// We now know there's a collision, and we know which
+		// of the axes gave the smallest penetration. We now
+		// can deal with it in different ways depending on
+		// the case.
+		if(best < 3) {
+			// We've got a vertex of box two on a face of box one.
+			pen += faceEpsilon;
+			fillPointFaceBoxBox(b1, b2, toCentre);
+		} else if (best < 6) {
+			// We've got a vertex of box one on a face of box two.
+			// We use the same algorithm as above, but swap around
+			// one and two (and therefore also the vector between their
+			// centres).
+			V3fn.inverse(toCentre, toCentre);
+			best -= 3;
+			pen += faceEpsilon;
+			fillPointFaceBoxBox(b2, b1, toCentre);
+		} else {
+			// We've got an edge-edge contact. Find out which axes
+			best -= 6;
+			let axis1Index = Math.floor(best / 3) + 1;
+			let axis2Index = best % 3 + 1;
+			sal Vector3 axis1, axis2, axis;
+			getAxis(b1, axis1Index-1, axis1);
+			getAxis(b2, axis2Index-1, axis2);
+			V3fn.cross(axis1, axis2, axis);
+			V3fn.normalize(axis, axis);
+
+			// The axis should point from box one to box two.
+			V3fn.dot(axis, toCentre);
+			if (OUTPUT > 0) {
+				V3fn.inverse(axis, axis);
+			}
+
+			// We have the axes, but not the edges: each axis has 4 edges parallel
+			// to it, we need to find which of the 4 for each object. We do
+			// that by finding the point in the centre of the edge. We know
+			// its component in the direction of the box's collision axis is zero
+			// (its a mid-point) and we determine which of the extremes in each
+			// of the other axes is closest.
+			sal Vector3 ptOn1Edge, ptOn2Edge;
+			V3fn.copy(b1HalfSize, ptOn1Edge);
+			V3fn.copy(b2HalfSize, ptOn2Edge);
+
+			for(let i; 3) {
+				if(i == axis1Index) {
+					Vector3[ptOn1Edge+i] = 0;
+				} else {
+					getAxis(b1, i-1, tmp);
+					V3fn.dot(tmp, axis);
+					if(OUTPUT > 0) Vector3[ptOn1Edge+i] = -Vector3[ptOn1Edge+i];
+				}
+
+				if(i == axis2Index) {
+					Vector3[ptOn2Edge+i] = 0;
+				} else {
+					getAxis(b2, i-1, tmp);
+					V3fn.dot(tmp, axis);
+					if(OUTPUT < 0) Vector3[ptOn2Edge+i] = -Vector3[ptOn2Edge+i];
+				}
+			}
+
+			// Move them into world coordinates (they are already oriented
+			// correctly, since they have been derived from the axes).
+			sal Vector3 ptOn1EdgeWorld, ptOn2EdgeWorld;
+			M4fn.transform(transform[b1], ptOn1Edge, ptOn1EdgeWorld);
+			M4fn.transform(transform[b2], ptOn2Edge, ptOn2EdgeWorld);
+
+			// So we have a point and a direction for the colliding edges.
+			// We need to find out point of closest approach of the two
+			// line-segments.
+			sal Vector3 point1, point2;
+			contactPoint(ptOn1EdgeWorld, axis1, Vector3[b1HalfSize + axis1Index], ptOn2EdgeWorld, axis2, Vector3[b2HalfSize + axis2Index], point1, point2);
+
+			// We can fill the contact.
+			V3fn.inverse(axis, axis);
+			Contact.add(b1Body, b2Body, point1, point2, axis);
+		}
+	}
+	function tryAxis(box1, box2, axis, toCentre, index) {
+		if(BoxBox.noCollisionConfirmed == 1) return;
+
+		// Make sure we have a normalized axis, and don't check almost parallel axes
+		V3fn.squareMagnitude(axis);
+		if(OUTPUT < 0.0001) return;
+		V3fn.normalize(axis, axis);
+
+		// Project the half-size of one onto axis
+		transformToAxis(box1, axis);
+		let penetration = OUTPUT;
+		transformToAxis(box2, axis);
+		penetration += OUTPUT;
+
+		// Project this onto the axis
+		V3fn.dot(toCentre, axis);
+		// Return the overlap (i.e. positive indicates
+		// overlap, negative indicates separation).
+		penetration -= Math.abs(OUTPUT);
+
+		if(penetration < 0) {
+			BoxBox.noCollisionConfirmed = 1;
+		} else {
+			if(penetration < BoxBox.pen - 0.01) {
+				BoxBox.pen = penetration;
+				BoxBox.best = index;
+			}
+		}
+	}
+	function transformToAxis(box, axis) {
+		sal Vector3 tmp;
+		const halfSize = Vector3[propA[box]];
+
+		getAxis(box, 0, tmp);
+		V3fn.dot(axis, tmp);
+		let ACCUM = halfSize#x * Math.abs(OUTPUT);
+		getAxis(box, 1, tmp);
+		V3fn.dot(axis, tmp);
+		ACCUM += halfSize#y * Math.abs(OUTPUT);
+		getAxis(box, 2, tmp);
+		V3fn.dot(axis, tmp);
+		OUTPUT = ACCUM + halfSize#z * Math.abs(OUTPUT);
+	}
+	function contactPoint(pOne, dOne, oneSize, pTwo, dTwo, twoSize, out1, out2) {
+		sal Vector3 toSt, cOne, cTwo; //Vector3
+		let dpStaOne, dpStaTwo, dpOneTwo, smOne, smTwo;
+		let denom, mua, mub;
+
+		V3fn.squareMagnitude(dOne); smOne = OUTPUT;
+		V3fn.squareMagnitude(dTwo); smTwo = OUTPUT;
+		V3fn.dot(dTwo, dOne); dpOneTwo = OUTPUT;
+
+		V3fn.sub(pOne, pTwo, toSt);
+		V3fn.dot(dOne, toSt); dpStaOne = OUTPUT;
+		V3fn.dot(dTwo, toSt); dpStaTwo = OUTPUT;
+
+		denom = smOne * smTwo - dpOneTwo * dpOneTwo;
+
+		// Zero denominator indicates parrallel lines
+		if (Math.abs(denom) < 0.0001) return;
+
+		mua = (dpOneTwo * dpStaTwo - smTwo * dpStaOne) / denom;
+		mub = (smOne * dpStaTwo - dpOneTwo * dpStaOne) / denom;
+
+		// If either of the edges has the nearest point out
+		// of bounds, then the edges aren't crossed, we have
+		// an edge-face contact. Our point is on the edge, which
+		// we know from the useOne parameter.
+		if (mua > oneSize ||
+			mua < -oneSize ||
+			mub > twoSize ||
+			mub < -twoSize) {
+			V3fn.copy(pOne, out1);
+			V3fn.copy(pTwo, out2);
+		} else {
+			V3fn.addScaled(pOne, dOne, mua, out1);
+			V3fn.addScaled(pTwo, dTwo, mub, out2);
+		}
+	}
+	function fillPointFaceBoxBox(b1, b2, toCentre) {
+		// This method is called when we know that a vertex from
+		// box two is in contact with box one.
+
+		// We know which axis the collision is on (i.e. best),
+		// but we need to work out which of the two faces on
+		// this axis.
+		const best = BoxBox.best;
+		const pen = BoxBox.pen;
+		sal Vector3 axis, tmp, vertexWorld, vertexB1, diff;
+		getAxis(b1, best, axis);
+		V3fn.dot(axis, toCentre);
+		if(OUTPUT > 0) V3fn.inverse(axis, axis);
+
+		let maxDir, maxSign, maxDot = -1;
+		for(let i; 3) {
+			getAxis(b2, i-1, tmp);
+			V3fn.dot(tmp, axis);
+			if(Math.abs(OUTPUT) > maxDot) {
+				maxDot = Math.abs(OUTPUT);
+				maxDir = i; 
+				maxSign = (OUTPUT > 0) * 2 - 1;
+			}
+		}
+
+		const hs = Vector3[propA[b2]];
+		const vertList = BoxBox.vertList;
+		vertList.clear();
+
+		if(maxDir == 1) {
+			vertList.push(hs#x * maxSign, -hs#y, -hs#z);
+			vertList.push(hs#x * maxSign, -hs#y,  hs#z);
+			vertList.push(hs#x * maxSign,  hs#y,  hs#z);
+			vertList.push(hs#x * maxSign,  hs#y, -hs#z);
+		}
+		if(maxDir == 2) {
+			vertList.push(-hs#x, hs#y * maxSign, -hs#z);
+			vertList.push(-hs#x, hs#y * maxSign,  hs#z);
+			vertList.push( hs#x, hs#y * maxSign,  hs#z);
+			vertList.push( hs#x, hs#y * maxSign, -hs#z);
+		}
+		if(maxDir == 3) {
+			vertList.push(-hs#x, -hs#y, hs#z * maxSign);
+			vertList.push(-hs#x,  hs#y, hs#z * maxSign);
+			vertList.push( hs#x,  hs#y, hs#z * maxSign);
+			vertList.push( hs#x, -hs#y, hs#z * maxSign);
+		}
+		// SCRATCH TODO OPTIMIZE
+
+		let i = 0;
+		repeat(4) {
+			V3fn.set(tmp, vertList[i]#x, vertList[i]#y, vertList[i]#z);
+			M4fn.transform(transform[b2], tmp, vertexWorld);
+			M4fn.transformInverse(transform[b1], vertexWorld, vertexB1);
+			vertList[i]#x = Vector3[vertexB1]#x;
+			vertList[i]#y = Vector3[vertexB1]#y;
+			vertList[i]#z = Vector3[vertexB1]#z;
+			i+=3;
+		}
+
+		const halfSize = Vector3[propA[b1]];
+
+		let i;
+		let start = 0;
+		let length = vertList.length;
+
+		if(best != 0) {
+			i = start;
+			repeat(length / 3) {
+				const pos1 = vertList[i];
+				if(pos1#x <= halfSize#x) {
+					vertList.push(pos1#x, pos1#y, pos1#z);
+				}
+				let i2 = i + 3;
+				if(i2 == start + length) i2 = start;
+				const pos2 = vertList[i2];
+				V3fn.set(diff, pos2#x - pos1#x, pos2#y - pos1#y, pos2#z - pos1#z); //TODO: optimize by using local vars instead of diff sal
+				//V3fn.sub(pos2, pos1, diff);
+				let minX = pos1#x;
+				let maxX = pos2#x;
+				if(minX > maxX) {
+					minX = pos2#x;
+					maxX = pos1#x;
+				}
+				if(minX < halfSize#x && maxX > halfSize#x) {
+					let t = (halfSize#x - pos1#x) / Vector3[diff]#x;
+					vertList.push(halfSize#x, pos1#y + Vector3[diff]#y * t, pos1#z + Vector3[diff]#z * t);
+				}
+				i += 3;
+			}
+			start += length;
+			length = vertList.length - start;
+
+			i = start;
+			repeat(length / 3) {
+				const pos1 = vertList[i];
+				if(pos1#x >= -halfSize#x) {
+					vertList.push(pos1#x, pos1#y, pos1#z);
+				}
+				let i2 = i + 3;
+				if(i2 == start + length) i2 = start;
+				const pos2 = vertList[i2];
+				V3fn.set(diff, pos2#x - pos1#x, pos2#y - pos1#y, pos2#z - pos1#z);
+				//V3fn.sub(pos2, pos1, diff);
+				let minX = pos1#x;
+				let maxX = pos2#x;
+				if(minX > maxX) {
+					minX = pos2#x;
+					maxX = pos1#x;
+				}
+				if(minX < -halfSize#x && maxX > -halfSize#x) {
+					let t = (-halfSize#x - pos1#x) / Vector3[diff]#x;
+					vertList.push(-halfSize#x, pos1#y + Vector3[diff]#y * t, pos1#z + Vector3[diff]#z * t);
+				}
+				i += 3;
+			}
+			start += length;
+			length = vertList.length - start;
+		}
+
+		if(best != 1) {
+			i = start;
+			repeat(length / 3) {
+				const pos1 = vertList[i];
+				if(pos1#y <= halfSize#y) {
+					vertList.push(pos1#x, pos1#y, pos1#z);
+				}
+				let i2 = i + 3;
+				if(i2 == start + length) i2 = start;
+				const pos2 = vertList[i2];
+				V3fn.set(diff, pos2#x - pos1#x, pos2#y - pos1#y, pos2#z - pos1#z);
+				//V3fn.sub(pos2, pos1, diff);
+				let minY = pos1#y;
+				let maxY = pos2#y;
+				if(minY > maxY) {
+					minY = pos2#y;
+					maxY = pos1#y;
+				}
+				if(minY < halfSize#y && maxY > halfSize#y) {
+					let t = (halfSize#y - pos1#y) / Vector3[diff]#y;
+					vertList.push(pos1#x + Vector3[diff]#x * t, halfSize#y, pos1#z + Vector3[diff]#z * t);
+				}
+				i += 3;
+			}
+			start += length;
+			length = vertList.length - start;
+
+			i = start;
+			repeat(length / 3) {
+				const pos1 = vertList[i];
+				if(pos1#y >= -halfSize#y) {
+					vertList.push(pos1#x, pos1#y, pos1#z);
+				}
+				let i2 = i + 3;
+				if(i2 == start + length) i2 = start;
+				const pos2 = vertList[i2];
+				V3fn.set(diff, pos2#x - pos1#x, pos2#y - pos1#y, pos2#z - pos1#z);
+				//V3fn.sub(pos2, pos1, diff);
+				let minY = pos1#y;
+				let maxY = pos2#y;
+				if(minY > maxY) {
+					minY = pos2#y;
+					maxY = pos1#y;
+				}
+				if(minY < -halfSize#y && maxY > -halfSize#y) {
+					let t = (-halfSize#y - pos1#y) / Vector3[diff]#y;
+					vertList.push(pos1#x + Vector3[diff]#x * t, -halfSize#y, pos1#z + Vector3[diff]#z * t);
+				}
+				i += 3;
+			}
+			start += length;
+			length = vertList.length - start;
+		}
+
+
+		if(best != 2) {
+			i = start;
+			repeat(length / 3) {
+				const pos1 = vertList[i];
+				if(pos1#z <= halfSize#z) {
+					vertList.push(pos1#x, pos1#y, pos1#z);
+				}
+				let i2 = i + 3;
+				if(i2 == start + length) i2 = start;
+				const pos2 = vertList[i2];
+				V3fn.set(diff, pos2#x - pos1#x, pos2#y - pos1#y, pos2#z - pos1#z);
+				//V3fn.sub(pos2, pos1, diff);
+				let minZ = pos1#z;
+				let maxZ = pos2#z;
+				if(minZ > maxZ) {
+					minZ = pos2#z;
+					maxZ = pos1#z;
+				}
+				if(minZ < halfSize#z && maxZ > halfSize#z) {
+					let t = (halfSize#z - pos1#z) / Vector3[diff]#z;
+					vertList.push(pos1#x + Vector3[diff]#x * t, pos1#y + Vector3[diff]#y * t, halfSize#z);
+				}
+				i += 3;
+			}
+			start += length;
+			length = vertList.length - start;
+
+			i = start;
+			repeat(length / 3) {
+				const pos1 = vertList[i];
+				if(pos1#z >= -halfSize#z) {
+					vertList.push(pos1#x, pos1#y, pos1#z);
+				}
+				let i2 = i + 3;
+				if(i2 == start + length) i2 = start;
+				const pos2 = vertList[i2];
+				V3fn.set(diff, pos2#x - pos1#x, pos2#y - pos1#y, pos2#z - pos1#z);
+				//V3fn.sub(pos2, pos1, diff);
+				let minZ = pos1#z;
+				let maxZ = pos2#z;
+				if(minZ > maxZ) {
+					minZ = pos2#z;
+					maxZ = pos1#z;
+				}
+				if(minZ < -halfSize#z && maxZ > -halfSize#z) {
+					let t = (-halfSize#z - pos1#z) / Vector3[diff]#z;
+					vertList.push(pos1#x + Vector3[diff]#x * t, pos1#y + Vector3[diff]#y * t, -halfSize#z);
+				}
+				i += 3;
+			}
+			start += length;
+			length = vertList.length - start;
+		}
+
+		i = start;
+		repeat(length/3) {
+			V3fn.set(tmp, vertList[i]#x, vertList[i]#y, vertList[i]#z);
+			addContactPoint(tmp, b1, b2, axis, best);
+			i += 3;
+		}
+	}
+	function addContactPoint(pos, b1, b2, axis, refDir) {
+		sal Vector3 point1, point2, normal;
+		const b1Body = body[b1];
+		const b2Body = body[b2];
+		const b1HalfSize = propA[b1];
+		
+		let pen = Vector3[b1HalfSize+1+refDir] - Math.abs(Vector3[pos+1+refDir]);
+		if(pen < 0) return;
+
+		V3fn.inverse(axis, normal);
+		M4fn.transform(transform[b1], pos, point2);
+		V3fn.addScaled(point2, axis, -pen, point1);
+
+		Contact.add(b1Body, b2Body, point1, point2, normal);
+	}
+	inline function setMinMax(a, b) {
+		min = a;
+		max = b;
+		if(min > max) {
+			let tmp = min;
+			min = max;
+			max = tmp;
+		}
+	}
+	inline function setMinMaxDouble(a, b, c, d) {
+		min1 = a;
+		max1 = b;
+		if(min1 > max1) {
+			let tmp = min1;
+			min1 = max1;
+			max1 = tmp;
+		}
+		min2 = c;
+		max2 = d;
+		if(min2 > max2) {
+			let tmp = min2;
+			min2 = max2;
+			max2 = tmp;
+		}
+	}
+	function capsuleCapsule(c1, c2) {
+		sal Vector3 pOne, pTwo, dOne, dTwo, temp, pos1, pos1a, pos1b, pos2, pos2a, pos2b, d, w, point1, point2, cDiff;
+		const c1Body = body[c1];
+		const c2Body = body[c2];
+		const c1Radius = propA[s1];
+		const c2Radius = propA[c2];
+		let oneSize = propB[c1];
+		let twoSize = propB[c2];
+
+		M4fn.getOffset(transform[c1], pOne);
+		M4fn.getOffset(transform[c2], pTwo);
+		M4fn.getAxisVector(transform[c1], 0, dOne);
+		M4fn.getAxisVector(transform[c2], 0, dTwo);
+		
+		V3fn.addScaled(pOne, dOne, -oneSize, pos1a);
+		V3fn.addScaled(pOne, dOne,  oneSize, pos1b);
+		V3fn.addScaled(pTwo, dTwo, -twoSize, pos2a);
+		V3fn.addScaled(pTwo, dTwo,  twoSize, pos2b);
+
+		//               minB -------------------- maxB
+		//  minA ------------------- maxA
+		let min1, max1, min2, max2;
+		setMinMaxDouble(Vector3[pos2a]#x, Vector3[pos2b]#x, Vector3[pos1a]#x, Vector3[pos1b]#x);
+		if(min1 - c2Radius > max2 + c1Radius) return;
+		if(max1 + c2Radius < min1 - c1Radius) return;
+		setMinMaxDouble(Vector3[pos2a]#y, Vector3[pos2b]#y, Vector3[pos1a]#y, Vector3[pos1b]#y);
+		if(min1 - c2Radius > max2 + c1Radius) return;
+		if(max1 + c2Radius < min2 - c1Radius) return;
+		setMinMaxDouble(Vector3[pos2a]#z, Vector3[pos2b]#z, Vector3[pos1a]#z, Vector3[pos1b]#z);
+		if(min1 - c2Radius > max2 + c1Radius) return;
+		if(max1 + c2Radius < min2 - c1Radius) return;
+
+		capsuleEnds(pOne, dOne, oneSize, pos2b, twoSize, c1, c2);
+		capsuleEnds(pOne, dOne, oneSize, pos2a, twoSize, c1, c2);
+		capsuleEnds(pTwo, dTwo, twoSize, pos1b, oneSize, c2, c1);
+		capsuleEnds(pTwo, dTwo, twoSize, pos1a, oneSize, c2, c1);
+
+		sal Vector3 toSt, cOne, cTwo;
+		let dpStaOne, dpStaTwo, dpOneTwo, smOne, smTwo;
+		let denom, mua, mub;
+
+		V3fn.squareMagnitude(dOne); smOne = OUTPUT;
+		V3fn.squareMagnitude(dTwo); smTwo = OUTPUT;
+		V3fn.dot(dTwo, dOne);       dpOneTwo = OUTPUT;
+
+		V3fn.sub(pOne, pTwo, toSt);
+		V3fn.dot(dOne, toSt); let dpStaOne = OUTPUT;
+		V3fn.dot(dTwo, toSt); let dpStaTwo = OUTPUT;
+
+		denom = smOne * smTwo - dpOneTwo * dpOneTwo;
+
+		// Zero denominator indicates parrallel lines
+		if(Math.abs(denom) < 0.0001) return;
+
+		mua = (dpOneTwo * dpStaTwo - smTwo * dpStaOne) / denom;
+		mub = (smOne * dpStaTwo - dpOneTwo * dpStaOne) / denom;
+
+		if(Math.abs(mua) > oneSize || Math.abs(mub) > twoSize) return;
+
+		V3fn.addScaled(pOne, dOne, mua, cOne);
+		V3fn.addScaled(pTwo, dTwo, mub, cTwo);
+
+		V3fn.sub(cTwo, cOne, cDiff);
+		V3fn.squareMagnitude(cDiff);
+		let radSum = c1Radius + c2Radius;
+		if(OUTPUT >= radSum * radSum) return;
+		V3fn.div(cDiff, Math.sqrt(OUTPUT), cDiff);
+		V3fn.addScaled(cOne, cDiff,  c1Radius, point1);
+		V3fn.addScaled(cTwo, cDiff, -c2Radius, point2);
+		Contact.add(c1Body, c2Body, point1, point2, cDiff);
+	}
+	function capsuleEnds(pOne, dOne, oneSize, point, twoSize, c1, c2) {
+		sal Vector3 temp, projPoint, diff, point1, point2;
+		const c1Body = body[c1];
+		const c2Body = body[c2];
+		const c1Radius = propA[s1];
+		const c2Radius = propA[c2];
+
+		V3fn.sub(pOne, point, temp);
+		V3fn.dot(temp, dOne);
+		let proj = -OUTPUT; //Calculate projection
+		if(proj < -oneSize) proj = -oneSize;
+		if(proj >  oneSize) proj =  oneSize;
+		V3fn.addScaled(pOne, dOne, proj, projPoint); //Calculate projection point
+		let totalSize = c1Radius + c2Radius;
+		V3fn.sub(point, projPoint, diff);
+		V3fn.squareMagnitude(diff);
+		if(OUTPUT > totalSize * totalSize) return; //If spheres too far, return
+		OUTPUT = Math.sqrt(OUTPUT);
+		let pen = totalSize - OUTPUT;
+		V3fn.div(diff, OUTPUT, diff);
+		V3fn.addScaled(projPoint, diff, c1Radius, point1);
+		V3fn.addScaled(point, diff, -c2Radius, point2);
+		Contact.add(c1Body, c2Body, point1, point2, diff);
+	}
+	function capsuleBox(c1, b2) {
+		sal Vector3 temp, pos1, pos2, pos1boxSpace, pos2boxSpace, diff;
+		const c1Body = body[c1];
+		const b2Body = body[b2];
+
+		const c1Radius = propA[c1];
+		const c1HalfSize = propB[c1];
+		const b2HalfSize = propA[b2];
+
+		//Coarse AABB vs AABB collision detection performed in box space
+		let mat = transform[b2];
+		//let halfSize = b2.halfSize, radius = c1.radius;
+		V3fn.set(temp,  c1HalfSize, 0, 0);
+		M4fn.transform(transform[c1], temp, pos1);
+		V3fn.set(temp, -c1HalfSize, 0, 0);
+		M4fn.transform(transform[c1], temp, pos2);
+		M4fn.transformInverse(mat, pos1, pos1boxSpace);
+		M4fn.transformInverse(mat, pos2, pos2boxSpace);
+
+		let min, max;
+		setMinMax(Vector3[pos1boxSpace]#x, Vector3[pos2boxSpace]#x);
+		if(min - c1Radius >=  Vector3[b2HalfSize]#x) return;
+		if(max + c1Radius <= -Vector3[b2HalfSize]#x) return;
+		setMinMax(Vector3[pos1boxSpace]#y, Vector3[pos2boxSpace]#y);
+		if(min - c1Radius >=  Vector3[b2HalfSize]#y) return;
+		if(max + c1Radius <= -Vector3[b2HalfSize]#y) return;
+		setMinMax(Vector3[pos1boxSpace]#z, Vector3[pos2boxSpace]#z);
+		if(min - c1Radius >=  Vector3[b2HalfSize]#z) return;
+		if(max + c1Radius <= -Vector3[b2HalfSize]#z) return;
+
+
+		//2 half-sphere vs AABB manifold generation performed in box space
+		V3fn.sub(pos2boxSpace, pos1boxSpace, diff);
+		halfSphereBox(pos1boxSpace, pos1, c1Radius, b2HalfSize, mat, diff, c1Body, b2Body);
+		V3fn.inverse(diff, diff);
+		halfSphereBox(pos2boxSpace, pos2, c1Radius, b2HalfSize, mat, diff, c1Body, b2Body);
+
+		//TODO: Check deep penetration
+		// ======================
+		// ... some code here ...
+		// ======================
+		//if( ... ) {
+			//Deep penetration
+		//} else {
+			//Lite penetration
+			sal Vector3 pos0, pos0boxSpace, offset, pOne, dOne;
+			M4fn.getOffset(transform[c1], pos0);
+			M4fn.transformInverse(mat, pos0, pos0boxSpace);
+			M4fn.getAxisVector(transform[c1], 0, offset);
+			V3fn.set(pOne, 0,  Vector3[b2HalfSize]#y,  Vector3[b2HalfSize]#z); V3fn.set(dOne, 1, 0, 0); checkEdge(pOne, dOne, Vector3[b2HalfSize]#x, pos0boxSpace, offset, c1HalfSize, c1Radius, mat, c1, b2);
+			V3fn.set(pOne, 0, -Vector3[b2HalfSize]#y,  Vector3[b2HalfSize]#z); V3fn.set(dOne, 1, 0, 0); checkEdge(pOne, dOne, Vector3[b2HalfSize]#x, pos0boxSpace, offset, c1HalfSize, c1Radius, mat, c1, b2);
+			V3fn.set(pOne, 0,  Vector3[b2HalfSize]#y, -Vector3[b2HalfSize]#z); V3fn.set(dOne, 1, 0, 0); checkEdge(pOne, dOne, Vector3[b2HalfSize]#x, pos0boxSpace, offset, c1HalfSize, c1Radius, mat, c1, b2);
+			V3fn.set(pOne, 0, -Vector3[b2HalfSize]#y, -Vector3[b2HalfSize]#z); V3fn.set(dOne, 1, 0, 0); checkEdge(pOne, dOne, Vector3[b2HalfSize]#x, pos0boxSpace, offset, c1HalfSize, c1Radius, mat, c1, b2);
+			V3fn.set(pOne,  Vector3[b2HalfSize]#x, 0,  Vector3[b2HalfSize]#z); V3fn.set(dOne, 0, 1, 0); checkEdge(pOne, dOne, Vector3[b2HalfSize]#y, pos0boxSpace, offset, c1HalfSize, c1Radius, mat, c1, b2);
+			V3fn.set(pOne, -Vector3[b2HalfSize]#x, 0,  Vector3[b2HalfSize]#z); V3fn.set(dOne, 0, 1, 0); checkEdge(pOne, dOne, Vector3[b2HalfSize]#y, pos0boxSpace, offset, c1HalfSize, c1Radius, mat, c1, b2);
+			V3fn.set(pOne,  Vector3[b2HalfSize]#x, 0, -Vector3[b2HalfSize]#z); V3fn.set(dOne, 0, 1, 0); checkEdge(pOne, dOne, Vector3[b2HalfSize]#y, pos0boxSpace, offset, c1HalfSize, c1Radius, mat, c1, b2);
+			V3fn.set(pOne, -Vector3[b2HalfSize]#x, 0, -Vector3[b2HalfSize]#z); V3fn.set(dOne, 0, 1, 0); checkEdge(pOne, dOne, Vector3[b2HalfSize]#y, pos0boxSpace, offset, c1HalfSize, c1Radius, mat, c1, b2);
+			V3fn.set(pOne,  Vector3[b2HalfSize]#x,  Vector3[b2HalfSize]#y, 0); V3fn.set(dOne, 0, 0, 1); checkEdge(pOne, dOne, Vector3[b2HalfSize]#z, pos0boxSpace, offset, c1HalfSize, c1Radius, mat, c1, b2);
+			V3fn.set(pOne, -Vector3[b2HalfSize]#x,  Vector3[b2HalfSize]#y, 0); V3fn.set(dOne, 0, 0, 1); checkEdge(pOne, dOne, Vector3[b2HalfSize]#z, pos0boxSpace, offset, c1HalfSize, c1Radius, mat, c1, b2);
+			V3fn.set(pOne,  Vector3[b2HalfSize]#x, -Vector3[b2HalfSize]#y, 0); V3fn.set(dOne, 0, 0, 1); checkEdge(pOne, dOne, Vector3[b2HalfSize]#z, pos0boxSpace, offset, c1HalfSize, c1Radius, mat, c1, b2);
+			V3fn.set(pOne, -Vector3[b2HalfSize]#x, -Vector3[b2HalfSize]#y, 0); V3fn.set(dOne, 0, 0, 1); checkEdge(pOne, dOne, Vector3[b2HalfSize]#z, pos0boxSpace, offset, c1HalfSize, c1Radius, mat, c1, b2);
+		//}
+	}
+	function checkEdge(pOne, dOne, oneSize, pTwo, dTwo, twoSize, radius, mat, c1, b2) {
+		sal Vector3 toSt, cOne, cTwo, diff, temp, normal, point1, point2; //Vector3
+		let dpStaOne, dpStaTwo, dpOneTwo, smOne, smTwo;
+		let denom, mua, mub;
+		const TRUE = 1, FALSE = 0;
+
+		V3fn.squareMagnitude(dOne); smOne = OUTPUT;
+		V3fn.squareMagnitude(dTwo); smTwo = OUTPUT;
+		V3fn.dot(dTwo, dOne); dpOneTwo = OUTPUT;
+
+		V3fn.sub(pOne, pTwo, toSt);
+		V3fn.dot(dOne, toSt); dpStaOne = OUTPUT;
+		V3fn.dot(dTwo, toSt); dpStaTwo = OUTPUT;
+
+		denom = smOne * smTwo - dpOneTwo * dpOneTwo;
+
+		// Zero denominator indicates parrallel lines
+		if(Math.abs(denom) < 0.0001) return;
+
+		mua = (dpOneTwo * dpStaTwo - smTwo * dpStaOne) / denom;
+		mub = (smOne * dpStaTwo - dpOneTwo * dpStaOne) / denom;
+
+		// EXPERIMENT START
+		let reProject = FALSE;
+		if(Math.abs(mua) > oneSize || Math.abs(mub) > twoSize) reProject = TRUE;
+
+		if(mua < -oneSize) mua = -oneSize;
+		if(mua >  oneSize) mua =  oneSize;
+		if(mub < -twoSize) mub = -twoSize;
+		if(mub >  twoSize) mub =  twoSize;
+
+		V3fn.addScaled(pOne, dOne, mua, cOne);
+		V3fn.addScaled(pTwo, dTwo, mub, cTwo);
+
+		if(reProject == TRUE) {
+			V3fn.sub(cTwo, pOne, temp);
+			V3fn.dot(dOne, temp);
+			if(Math.abs(OUTPUT) <= oneSize) {
+				mua = OUTPUT;
+				V3fn.addScaled(pOne, dOne, mua, cOne);
+			}
+			V3fn.sub(cOne, pTwo, temp);
+			V3fn.dot(dTwo, temp);
+			if(Math.abs(OUTPUT) <= twoSize) {
+				mub = OUTPUT;
+				V3fn.addScaled(pTwo, dTwo, mub, cTwo);
+			}
+		}
+		// EXPERIMENT END
+
+		V3fn.sub(cOne, cTwo, diff);
+		V3fn.squareMagnitude(diff);
+		//If distance of the capsule to an edge of a box is greater than capsule's radius, then there is no collision
+		if(OUTPUT > radius * radius) return;
+		V3fn.div(diff, Math.sqrt(OUTPUT), diff);
+
+		M4fn.transformDirection(mat, diff, normal);
+		V3fn.addScaled(cTwo, diff, radius, temp);
+		M4fn.transform(mat, temp, point1);
+		M4fn.transform(mat, cOne, point2);
+		Contact.add(body[c1], body[b2], point1, point2, normal);
+	}
+	function halfSphereBox(sphere, sphereWorld, radius, box, mat, projectOn, body1, body2) {
+		sal Vector3 close, closeWorld, diff, point1, normal;
+
+		if(Math.abs(Vector3[sphere]#x) >= radius + Vector3[box]#x) return;
+		if(Math.abs(Vector3[sphere]#y) >= radius + Vector3[box]#y) return;
+		if(Math.abs(Vector3[sphere]#z) >= radius + Vector3[box]#z) return;
+
+		V3fn.copy(sphere, close);
+		if(Vector3[close]#x >  Vector3[box]#x) Vector3[close]#x =  Vector3[box]#x;
+		if(Vector3[close]#y >  Vector3[box]#y) Vector3[close]#y =  Vector3[box]#y;
+		if(Vector3[close]#z >  Vector3[box]#z) Vector3[close]#z =  Vector3[box]#z;
+		if(Vector3[close]#x < -Vector3[box]#x) Vector3[close]#x = -Vector3[box]#x;
+		if(Vector3[close]#y < -Vector3[box]#y) Vector3[close]#y = -Vector3[box]#y;
+		if(Vector3[close]#z < -Vector3[box]#z) Vector3[close]#z = -Vector3[box]#z;
+
+		V3fn.sub(close, sphere, diff);
+		V3fn.squareMagnitude(diff);
+		if(OUTPUT > radius * radius) return;
+		if(OUTPUT == 0) return; //Sphere is inside the box
+		V3fn.dot(diff, projectOn);
+		if(OUTPUT > 0.001) return; //Half-spheres
+		M4fn.transform(mat, close, closeWorld);
+
+		//Lite penetration
+		V3fn.sub(closeWorld, sphereWorld, normal);
+
+		V3fn.normalize(normal, normal);
+		V3fn.addScaled(sphereWorld, normal, radius, point1);
+		Contact.add(body1, body2, point1, closeWorld, normal);
+	}
+}

@@ -1,0 +1,127 @@
+namespace Collider {
+	list type; //Number
+	list body; //RigidBody
+	list matrix; //Matrix4
+	list transform; //Matrix4
+	list restitution; //Number
+	list friction; //Number
+	list next; //CollisionPrimitive
+
+	list propA;
+	list propB;
+
+	// 0 PLANE:
+	//		propA - normal (vector3)
+	//		propB - offset (number)
+	//
+	// 1 BOX:
+	//		propA - halfSize (vector3)
+	//
+	// 2 SHPHERE
+	//		propA - radius
+	//
+	// 3 CAPSULE
+	//		propA - radius
+	//		propB - halfSize (number)
+
+	variable free;
+	function new(b, t, pa, pb, n) {
+		if(free > -1) {
+			let col = free;
+			free = type[free];
+			type[col] = t;
+			body[col] = b;
+			M4fn.new();
+			matrix[col] = OUTPUT;
+			M4fn.new();
+			transform[col] = OUTPUT;
+			restitution[col] = 0.2;
+			friction[col] = 0.2;
+			next[col] = n;
+			propA[col] = pa;
+			propB[col] = pb;
+			OUTPUT = col;
+		} else {
+			type.push(t);
+			body.push(b);
+			M4fn.new();
+			matrix.push(OUTPUT);
+			M4fn.new();
+			transform.push(OUTPUT);
+			restitution.push(0.2);
+			friction.push(0.2);
+			next.push(n);
+			propA.push(pa);
+			propB.push(pb);
+			OUTPUT = type.length;
+		}
+	}
+	function delete(index) {
+		let index = index; // Converting immutable argument into mutable local variable with the same name
+		until(index == -1) {
+			if(type[index] < 2) V3fn.delete(propA[index]); // Plane and box have Vector3 in propA which has to be cleared
+			M4fn.delete(matrix[index]);
+			M4fn.delete(transform[index]);
+
+			type[index] = free;
+			free = index;
+			index = next[index];
+		}
+	}
+
+	function calcTransform(cp) {
+		M4fn.mulMatrix4(RigidBody.transformMatrix[body[cp]], matrix[cp], transform[cp]);
+	}
+
+	function getAxis(cp, axis, output) {
+		M4fn.getAxisVector(transform[cp], axis, output);
+	}
+
+	function getInertiaTensor(cp, out) {
+		sal Vector3 offset;
+		if(type[cp] < 2) {
+			if(type[cp] < 1) {
+				// PLANE
+				M3fn.set(out, 0,0,0, 0,0,0, 0,0,0);
+			} else {
+				// BOX
+				let massDiv12;
+				const halfSize = Vector3[propA[cp]];
+				massDiv12 = 0.3 / RigidBody.inverseMass[body[cp]];
+				M3fn.set(out, 0,0,0, 0,0,0, 0,0,0);
+				Matrix3[out]#1 = massDiv12 * (halfSize#y * halfSize#y + halfSize#z * halfSize#z);
+				Matrix3[out]#5 = massDiv12 * (halfSize#x * halfSize#x + halfSize#z * halfSize#z);
+				Matrix3[out]#9 = massDiv12 * (halfSize#x * halfSize#x + halfSize#y * halfSize#y);
+			}
+		} else {
+			if(type[cp] < 3) {
+				// SPHERE
+				let val;
+				const radius = propA[cp];
+				val = 2 / 3 / RigidBody.inverseMass[body[cp]] * radius * radius;
+				M3fn.set(out, 0,0,0, 0,0,0, 0,0,0);
+				Matrix3[out]#1 = val;
+				Matrix3[out]#5 = val;
+				Matrix3[out]#9 = val;
+			} else {
+				// CAPSULE
+				let massDiv12, radiusSq, hsRad;
+				const radius = propA[cp];
+				const halfSize = propB[cp];
+				massDiv12 = 0.3 / RigidBody.inverseMass[body[cp]];
+				radiusSq = radius * radius;
+				hsRad = halfSize + radius;
+				M3fn.set(out, 0,0,0, 0,0,0, 0,0,0);
+				Matrix3[out]#1 = massDiv12 * (radiusSq * 2);
+				Matrix3[out]#5 = massDiv12 * (hsRad * hsRad + radiusSq);
+				Matrix3[out]#9 = massDiv12 * (hsRad * hsRad + radiusSq);
+			}
+		}
+		let mass = 1 / RigidBody.inverseMass[Collider.body[cp]];
+		M4fn.getOffset(matrix[cp], offset);
+		Matrix3[out]#1 += mass * Vector3[offset]#x * Vector3[offset]#x;
+		Matrix3[out]#5 += mass * Vector3[offset]#y * Vector3[offset]#y;
+		Matrix3[out]#9 += mass * Vector3[offset]#z * Vector3[offset]#z;
+	}
+
+}
