@@ -388,6 +388,10 @@ namespace LockPointTranslationsConstraint {
 		V3fn.sub(point1, x1, r1);
 		V3fn.sub(point2, x2, r2);
 		V3fn.sub(point2, point1, diff);
+		if(Renderer.showJoints == 1) {
+			dot(point1);
+			dot(point2);
+		}
 
 		Constraint.b1.push(b1);
 		Constraint.b2.push(b2);

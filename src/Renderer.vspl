@@ -1,0 +1,365 @@
+namespace Renderer {
+	variable showContacts;
+	variable showJoints;
+	variable camX, camY, camZ, camVelX, camVelY, camVelZ, camRotX, camRotY, sinX, sinY, cosX, cosY, FOV;
+
+	function controls2() {
+		let pv = RigidBody.velocity[player];
+		let move = (Sensing.keyDown("w") - Sensing.keyDown("s")) * 0.5;
+		Vector3[pv]#x -= sinY * move;
+		Vector3[pv]#z += cosY * move;
+		move = (Sensing.keyDown("d") - Sensing.keyDown("a")) * 0.5;
+		Vector3[pv]#x += cosY * move;
+		Vector3[pv]#z += sinY * move;
+		if(Sensing.keyDown("space")) Vector3[pv]#y = 5;
+		pv = RigidBody.position[player];
+		camX = Vector3[pv]#x;
+		camY = Vector3[pv]#y;
+		camZ = Vector3[pv]#z;
+	}
+	function controls1() {
+		let move = (Sensing.keyDown("w") - Sensing.keyDown("s")) * 0.5;
+		camVelX -= sinY * move;
+		camVelZ += cosY * move;
+		move = (Sensing.keyDown("d") - Sensing.keyDown("a")) * 0.5;
+		camVelX += cosY * move;
+		camVelZ += sinY * move;
+
+		camVelY -= 0.326;
+		if(camY + camVelY < 10) {
+			camVelY = Sensing.keyDown("space") * 5;
+			camY = 10;
+		}
+		camX += camVelX;
+		camY += camVelY;
+		camZ += camVelZ;
+		camVelX *= 0.9;
+		camVelY *= 0.9;
+		camVelZ *= 0.9;
+	}
+	function render() {
+		camRotX = Sensing.mouseY * (-0.9);
+		camRotY = Sensing.mouseX * (-2);
+		sinX = Math.sin(camRotX);
+		cosX = Math.cos(camRotX);
+		sinY = Math.sin(camRotY);
+		cosY = Math.cos(camRotY);
+		Pen.clear();
+		Pen.setSize(1);
+		for(let i; World.bodies.length) {
+			if(i != player) {
+				let col = RigidBody.collider[World.bodies[i]];
+				until(col == -1) {
+					renderCollider(col);
+					col = Collider.next[col];
+				}
+			}
+		}
+		Pen.setSize(6);
+		sal Vector3 temp;
+		for(let i; dots.length/3) {
+			V3fn.set(temp, dots[i*3-2], dots[i*3-1], dots[i*3]);
+			transform2(temp);
+			if(Vector3[temp]#z > 0) {
+				Pen.moveTo(Vector3[temp]#x * 500 / Vector3[temp]#z, Vector3[temp]#y * 500 / Vector3[temp]#z);
+				Pen.down();
+				Pen.up();
+			}
+		}
+	}
+	function renderCollider(i) {
+		let mat = Collider.transform[i];
+		if(Collider.type[i] == 0) {
+			sal Vector3 tang1, tang2, temp, pos1, pos2, pos3, pos4;
+			const scale = 20;
+			V3fn.tangents(Collider.propA[i], tang1, tang2);
+			V3fn.add(tang1, tang2, temp);
+			V3fn.mul(temp, scale, temp);
+			V3fn.addScaled(temp, Collider.propA[i], Collider.propB[i], temp);
+			transform(mat, temp, pos1);
+
+			V3fn.sub(tang1, tang2, temp);
+			V3fn.mul(temp, scale, temp);
+			V3fn.addScaled(temp, Collider.propA[i], Collider.propB[i], temp);
+			transform(mat, temp, pos2);
+
+			V3fn.sub(tang2, tang1, temp);
+			V3fn.mul(temp, scale, temp);
+			V3fn.addScaled(temp, Collider.propA[i], Collider.propB[i], temp);
+			transform(mat, temp, pos3);
+
+			V3fn.add(tang1, tang2, temp);
+			V3fn.mul(temp, -scale, temp);
+			V3fn.addScaled(temp, Collider.propA[i], Collider.propB[i], temp);
+			transform(mat, temp, pos4);
+
+			line(pos1, pos2);
+			line(pos2, pos4);
+			line(pos4, pos3);
+			line(pos3, pos1);
+		}
+		if(Collider.type[i] == 1) {
+			sal Vector3 temp, posXPYPZP, posXNYPZP, posXPYNZP, posXNYNZP, posXPYPZN, posXNYPZN, posXPYNZN, posXNYNZN;
+			const hs = Vector3[Collider.propA[i]];
+			let x = hs#x;
+			let y = hs#y;
+			let z = hs#z;
+			let _x = -x;
+			let _y = -y;
+			let _z = -z;
+
+			V3fn.set(temp,  x,  y,  z);
+			transform(mat, temp, posXPYPZP);
+			V3fn.set(temp, _x,  y,  z);
+			transform(mat, temp, posXNYPZP);
+			V3fn.set(temp,  x, _y,  z);
+			transform(mat, temp, posXPYNZP);
+			V3fn.set(temp, _x, _y,  z);
+			transform(mat, temp, posXNYNZP);
+			V3fn.set(temp,  x,  y, _z);
+			transform(mat, temp, posXPYPZN);
+			V3fn.set(temp, _x,  y, _z);
+			transform(mat, temp, posXNYPZN);
+			V3fn.set(temp,  x, _y, _z);
+			transform(mat, temp, posXPYNZN);
+			V3fn.set(temp, _x, _y, _z);
+			transform(mat, temp, posXNYNZN);
+
+			line(posXPYPZP, posXNYPZP);
+			line(posXPYNZP, posXNYNZP);
+			line(posXPYPZN, posXNYPZN);
+			line(posXPYNZN, posXNYNZN);
+			line(posXPYPZP, posXPYNZP);
+			line(posXNYPZP, posXNYNZP);
+			line(posXPYPZN, posXPYNZN);
+			line(posXNYPZN, posXNYNZN);
+			line(posXPYPZP, posXPYPZN);
+			line(posXNYPZP, posXNYPZN);
+			line(posXPYNZP, posXPYNZN);
+			line(posXNYNZP, posXNYNZN);
+		}
+		if(Collider.type[i] == 2) {
+			//Pen.setSize(Collider.propA[i] * 1000 / Vector3[out]#z);
+			sal Vector3 temp,
+						posXP, posXN, posYP, posYN, posZP, posZN,
+						posXPYP, posXPYN, posXNYP, posXNYN,
+						posYPZP, posYPZN, posYNZP, posYNZN,
+						posXPZP, posXPZN, posXNZP, posXNZN;
+			let R = Collider.propA[i];
+			let r = R * 0.707;
+			let _R = -R;
+			let _r = -r;
+
+			V3fn.set(temp, R, 0, 0);
+			transform(mat, temp, posXP);
+			V3fn.set(temp, _R, 0, 0);
+			transform(mat, temp, posXN);
+			V3fn.set(temp, 0, R, 0);
+			transform(mat, temp, posYP);
+			V3fn.set(temp, 0, _R, 0);
+			transform(mat, temp, posYN);
+			V3fn.set(temp, 0, 0, R);
+			transform(mat, temp, posZP);
+			V3fn.set(temp, 0, 0, _R);
+			transform(mat, temp, posZN);
+
+			V3fn.set(temp, r, r, 0);
+			transform(mat, temp, posXPYP);
+			V3fn.set(temp, _r, r, 0);
+			transform(mat, temp, posXNYP);
+			V3fn.set(temp, r, _r, 0);
+			transform(mat, temp, posXPYN);
+			V3fn.set(temp, _r, _r, 0);
+			transform(mat, temp, posXNYN);
+
+			V3fn.set(temp, 0, r, r);
+			transform(mat, temp, posYPZP);
+			V3fn.set(temp, 0, _r, r);
+			transform(mat, temp, posYNZP);
+			V3fn.set(temp, 0, r, _r);
+			transform(mat, temp, posYPZN);
+			V3fn.set(temp, 0, _r, _r);
+			transform(mat, temp, posYNZN);
+
+			V3fn.set(temp, r, 0, r);
+			transform(mat, temp, posXPZP);
+			V3fn.set(temp, _r, 0, r);
+			transform(mat, temp, posXNZP);
+			V3fn.set(temp, r, 0, _r);
+			transform(mat, temp, posXPZN);
+			V3fn.set(temp, _r, 0, _r);
+			transform(mat, temp, posXNZN);
+
+			line(posXP  , posXPYP);
+			line(posXPYP, posYP  );
+			line(posYP  , posXNYP);
+			line(posXNYP, posXN  );
+			line(posXN  , posXNYN);
+			line(posXNYN, posYN  );
+			line(posYN  , posXPYN);
+			line(posXPYN, posXP  );
+
+			line(posXP  , posXPZP);
+			line(posXPZP, posZP  );
+			line(posZP  , posXNZP);
+			line(posXNZP, posXN  );
+			line(posXN  , posXNZN);
+			line(posXNZN, posZN  );
+			line(posZN  , posXPZN);
+			line(posXPZN, posXP  );
+
+			line(posYP  , posYPZP);
+			line(posYPZP, posZP  );
+			line(posZP  , posYNZP);
+			line(posYNZP, posYN  );
+			line(posYN  , posYNZN);
+			line(posYNZN, posZN  );
+			line(posZN  , posYPZN);
+			line(posYPZN, posYP  );
+		}
+		if(Collider.type[i] == 3) {
+			sal Vector3 temp,
+						posXP, posXN, pos1YP, pos1YN, pos1ZP, pos1ZN, pos2YP, pos2YN, pos2ZP, pos2ZN,
+						posXPYP, posXPYN, posXNYP, posXNYN,
+						pos1YPZP, pos1YPZN, pos1YNZP, pos1YNZN, pos2YPZP, pos2YPZN, pos2YNZP, pos2YNZN,
+						posXPZP, posXPZN, posXNZP, posXNZN;
+			let R = Collider.propA[i];
+			let r = R * 0.707;
+			let hs = Collider.propB[i];
+			let hsR = hs + R;
+			let hsr = hs + r;
+			let _R = -R;
+			let _r = -r;
+			let _hs = -hs;
+			let _hsR = -hsR;
+			let _hsr = -hsr;
+
+			V3fn.set(temp, hsR, 0, 0);
+			transform(mat, temp, posXP);
+			V3fn.set(temp, _hsR, 0, 0);
+			transform(mat, temp, posXN);
+			V3fn.set(temp, _hs, R, 0);
+			transform(mat, temp, pos1YP);
+			V3fn.set(temp, _hs, _R, 0);
+			transform(mat, temp, pos1YN);
+			V3fn.set(temp, _hs, 0, R);
+			transform(mat, temp, pos1ZP);
+			V3fn.set(temp, _hs, 0, _R);
+			transform(mat, temp, pos1ZN);
+			V3fn.set(temp, hs, R, 0);
+			transform(mat, temp, pos2YP);
+			V3fn.set(temp, hs, _R, 0);
+			transform(mat, temp, pos2YN);
+			V3fn.set(temp, hs, 0, R);
+			transform(mat, temp, pos2ZP);
+			V3fn.set(temp, hs, 0, _R);
+			transform(mat, temp, pos2ZN);
+
+			V3fn.set(temp, _hs, r, r);
+			transform(mat, temp, pos1YPZP);
+			V3fn.set(temp, _hs, _r, r);
+			transform(mat, temp, pos1YNZP);
+			V3fn.set(temp, _hs, r, _r);
+			transform(mat, temp, pos1YPZN);
+			V3fn.set(temp, _hs, _r, _r);
+			transform(mat, temp, pos1YNZN);
+
+			V3fn.set(temp, hs, r, r);
+			transform(mat, temp, pos2YPZP);
+			V3fn.set(temp, hs, _r, r);
+			transform(mat, temp, pos2YNZP);
+			V3fn.set(temp, hs, r, _r);
+			transform(mat, temp, pos2YPZN);
+			V3fn.set(temp, hs, _r, _r);
+			transform(mat, temp, pos2YNZN);
+
+			V3fn.set(temp, hsr, r, 0);
+			transform(mat, temp, posXPYP);
+			V3fn.set(temp, _hsr, r, 0);
+			transform(mat, temp, posXNYP);
+			V3fn.set(temp, hsr, _r, 0);
+			transform(mat, temp, posXPYN);
+			V3fn.set(temp, _hsr, _r, 0);
+			transform(mat, temp, posXNYN);
+
+			V3fn.set(temp, hsr, 0, r);
+			transform(mat, temp, posXPZP);
+			V3fn.set(temp, _hsr, 0, r);
+			transform(mat, temp, posXNZP);
+			V3fn.set(temp, hsr, 0, _r);
+			transform(mat, temp, posXPZN);
+			V3fn.set(temp, _hsr, 0, _r);
+			transform(mat, temp, posXNZN);
+
+			line(pos1YP  , pos1YPZP);
+			line(pos1YPZP, pos1ZP  );
+			line(pos1ZP  , pos1YNZP);
+			line(pos1YNZP, pos1YN  );
+			line(pos1YN  , pos1YNZN);
+			line(pos1YNZN, pos1ZN  );
+			line(pos1ZN  , pos1YPZN);
+			line(pos1YPZN, pos1YP  );
+
+			line(pos2YP  , pos2YPZP);
+			line(pos2YPZP, pos2ZP  );
+			line(pos2ZP  , pos2YNZP);
+			line(pos2YNZP, pos2YN  );
+			line(pos2YN  , pos2YNZN);
+			line(pos2YNZN, pos2ZN  );
+			line(pos2ZN  , pos2YPZN);
+			line(pos2YPZN, pos2YP  );
+
+			line(posXP  , posXPYP);
+			line(posXPYP, pos2YP );
+			line(pos2YP , pos1YP );
+			line(pos1YP , posXNYP);
+			line(posXNYP, posXN  );
+			line(posXN  , posXNYN);
+			line(posXNYN, pos1YN );
+			line(pos1YN , pos2YN );
+			line(pos2YN , posXPYN);
+			line(posXPYN, posXP  );
+
+			line(posXP  , posXPZP);
+			line(posXPZP, pos2ZP );
+			line(pos2ZP , pos1ZP );
+			line(pos1ZP , posXNZP);
+			line(posXNZP, posXN  );
+			line(posXN  , posXNZN);
+			line(posXNZN, pos1ZN );
+			line(pos1ZN , pos2ZN );
+			line(pos2ZN , posXPZN);
+			line(posXPZN, posXP  );
+		}
+	}
+	function transform(mat, in, out) {
+		M4fn.transform(mat, in, out);
+		const v = Vector3[out];
+		V3fn.set(out, v#x-camX, v#y-camY, v#z-camZ);
+		V3fn.set(out, v#x*cosY+v#z*sinY, v#y, v#z*cosY-v#x*sinY);
+		V3fn.set(out, v#x, v#y*cosX+v#z*sinX, v#z*cosX-v#y*sinX);
+	}
+	function transform2(out) {
+		const v = Vector3[out];
+		V3fn.set(out, v#x-camX, v#y-camY, v#z-camZ);
+		V3fn.set(out, v#x*cosY+v#z*sinY, v#y, v#z*cosY-v#x*sinY);
+		V3fn.set(out, v#x, v#y*cosX+v#z*sinX, v#z*cosX-v#y*sinX);
+	}
+	function line(pos1, pos2) {
+		const zNear = 1;
+		if(Vector3[pos1]#z > zNear) {
+			Pen.moveTo(Vector3[pos1]#x * FOV / Vector3[pos1]#z, Vector3[pos1]#y * FOV / Vector3[pos1]#z);
+			Pen.down();
+		}
+		if((Vector3[pos1]#z - zNear) * (Vector3[pos2]#z - zNear) < 0) {
+			const x = (Vector3[pos1]#x + (Vector3[pos2]#x - Vector3[pos1]#x) / (Vector3[pos2]#z - Vector3[pos1]#z) * (zNear - Vector3[pos1]#z)) * FOV / zNear;
+			const y = (Vector3[pos1]#y + (Vector3[pos2]#y - Vector3[pos1]#y) / (Vector3[pos2]#z - Vector3[pos1]#z) * (zNear - Vector3[pos1]#z)) * FOV / zNear;
+			Pen.moveTo(x, y);
+			Pen.down();
+		}
+		if(Vector3[pos2]#z > zNear) {
+			Pen.moveTo(Vector3[pos2]#x * FOV / Vector3[pos2]#z, Vector3[pos2]#y * FOV / Vector3[pos2]#z);
+		}
+		Pen.up();
+	}
+}

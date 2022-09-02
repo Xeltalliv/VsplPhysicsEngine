@@ -1,5 +1,4 @@
 variable OUTPUT;
-variable infinity;
 
 namespace Math {
 	const PI = 3.141592653589793;

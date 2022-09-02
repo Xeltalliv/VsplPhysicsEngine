@@ -1,5 +1,9 @@
 namespace Contact {
 	function add(b1, b2, point1, point2, normal) {
+		if(Renderer.showContacts == 1) {
+			dot(point1);
+			dot(point2);
+		}
 		sal Vector3 tang1, tang2;
 		V3fn.tangents(normal, tang1, tang2);
 		PenetrationConstraint.add(b1, b2, point1, point2, normal, CollisionDetector.restitution, 0);

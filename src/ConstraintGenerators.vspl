@@ -53,6 +53,7 @@ namespace ConstraintGenerators {
 			i += 7;
 		}
 		until(all[i] > CENTERDISTANCEJOINT) { // body1, body2, length
+			line(RigidBody.position[all[i]#2], RigidBody.position[all[i]#3]);
 			CenterDistanceConstraint.add(all[i]#2, all[i]#3, all[i]#4);
 			i += 5;
 		}

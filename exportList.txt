@@ -1,12 +1,1 @@
-Sprite1 World.stepPhysics
-
-Sprite2 World.resetAll
-Sprite2 Make.*
-Sprite2 V3fn.*
-Sprite2 M3fn.*
-Sprite2 M4fn.*
-Sprite2 QTfn.*
-Sprite2 RigidBody.new
-Sprite2 RigidBody.delete
-Sprite2 Collider.new
-Sprite2 Collider.delete
+Sprite1 Demos.*

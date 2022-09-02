@@ -1,0 +1,568 @@
+variable player;
+variable infinity;
+list dots;
+
+function dot(vec) {
+	dots.push(Vector3[vec]#x, Vector3[vec]#y, Vector3[vec]#z);
+}
+
+namespace Demos {
+	variable selected;
+	variable qPressed;
+
+	function whenFlagClicked() {
+		infinity = 1 / 0;
+		Looks.setSize(Infinity);
+		Pen.setSize(6);
+		Renderer.FOV = 500;
+		ConstraintResolver.iterations = 10;
+
+		load();
+		forever {
+			tick();
+		}
+	}
+	function load() {
+		selected = "wall";
+
+		World.resetAll();
+		sal Vector3 zero, gravity;
+		V3fn.clear(zero);
+		V3fn.set(gravity, 0, -9.8, 0);
+		V3fn.zero = zero;
+		World.gravity = gravity;
+
+		if(selected == "tower") {
+			Make.plane(0, 1, 0, 0);
+			makePlayer(2, 2, 10);
+			let y=0;
+			repeat(4) {
+				Make.box( 0, y+9, 0, 10, 2,10, -1);
+				Make.box(-4, y+4, -4, 2, 8, 2, -1);
+				Make.box( 4, y+4, -4, 2, 8, 2, -1);
+				Make.box(-4, y+4,  4, 2, 8, 2, -1);
+				Make.box( 4, y+4,  4, 2, 8, 2, -1);
+				y += 10;
+			}
+		}
+		if(selected == "table") {
+			Make.plane(0, 1, 0, 0);
+			makePlayer(0, 2, 10);
+
+			RigidBody.new();
+			let body = OUTPUT, last;
+			V3fn.set(RigidBody.position[body], 0, 1, 0);
+			RigidBody.inverseMass[body] = 1 / 0.22;
+			RigidBody.calculateDerivedData(body);
+			V3fn.new();
+			V3fn.set(OUTPUT, 1, 0.2, 1);
+			Collider.new(body, 1, OUTPUT, 0, -1);
+			last = OUTPUT;
+			Matrix4[Collider.matrix[last]]#y = 0.18;
+
+			V3fn.new();
+			V3fn.set(OUTPUT, 0.1, 0.5, 0.1);
+			Collider.new(body, 1, OUTPUT, 0, last);
+			last = OUTPUT;
+			Matrix4[Collider.matrix[last]]#y = -0.5;
+			Matrix4[Collider.matrix[last]]#x = 0.8;
+			Matrix4[Collider.matrix[last]]#z = 0.8;
+
+			V3fn.new();
+			V3fn.set(OUTPUT, 0.1, 0.5, 0.1);
+			Collider.new(body, 1, OUTPUT, 0, last);
+			last = OUTPUT;
+			Matrix4[Collider.matrix[last]]#y = -0.48;
+			Matrix4[Collider.matrix[last]]#x = -0.8;
+			Matrix4[Collider.matrix[last]]#z = 0.8;
+
+			V3fn.new();
+			V3fn.set(OUTPUT, 0.1, 0.5, 0.1);
+			Collider.new(body, 1, OUTPUT, 0, last);
+			last = OUTPUT;
+			Matrix4[Collider.matrix[last]]#y = -0.48;
+			Matrix4[Collider.matrix[last]]#x = 0.8;
+			Matrix4[Collider.matrix[last]]#z = -0.8;
+
+			V3fn.new();
+			V3fn.set(OUTPUT, 0.1, 0.5, 0.1);
+			Collider.new(body, 1, OUTPUT, 0, last);
+			last = OUTPUT;
+			Matrix4[Collider.matrix[last]]#y = -0.48;
+			Matrix4[Collider.matrix[last]]#x = -0.8;
+			Matrix4[Collider.matrix[last]]#z = -0.8;
+	
+			RigidBody.collider[body] = last;
+			RigidBody.calculateInertiaTensor(body);
+			World.bodies.push(body);
+
+			Make.box(0, 1.43,  0.75, 0.4, 0.05, 0.4, -1);
+			Make.box(0, 1.43, -0.75, 0.4, 0.05, 0.4, -1);
+			Make.box( 0.75, 1.43, 0, 0.4, 0.05, 0.4, -1);
+			Make.box(-0.75, 1.43, 0, 0.4, 0.05, 0.4, -1);
+
+			Make.box(-0.3, 1.43,  0.75, 0.05, 0.05, 0.4, -1);
+			Make.box( 0.3, 1.43, -0.75, 0.05, 0.05, 0.4, -1);
+
+			Make.box(-0.75, 1.43, -0.3, 0.4, 0.05, 0.05, -1);
+			Make.box( 0.75, 1.43,  0.3, 0.4, 0.05, 0.05, -1);
+			sal Vector3 temp;
+			V3fn.set(temp, 0,1,0);
+			chair(0, 1,  1.5);
+			chair(0, 1, -1.5);
+			QTfn.rotateByScaledVector(RigidBody.orientation[OUTPUT], temp, 2);
+			QTfn.rotateByScaledVector(RigidBody.orientation[OUTPUT], temp, 2);
+			chair( 1.5, 1, 0);
+			QTfn.rotateByScaledVector(RigidBody.orientation[OUTPUT], temp, 2);
+			chair(-1.5, 1, 0);
+			QTfn.rotateByScaledVector(RigidBody.orientation[OUTPUT], temp, -2);
+		}
+		if(selected == "buoyancy") {
+			//Make.plane(0, 1, 0, -10);
+			makePlayer(0, 8, 0);
+			Make.box(0, 3, 0, 6, 6, 6, -1);
+			let box = OUTPUT;
+			RigidBody.linearDamping[box] = 0.98;
+			RigidBody.angularDamping[box] = 0.98;
+
+			V3fn.new(); V3fn.set(OUTPUT, 3, 0, 3);
+			Make.buoyancyFGen(box, OUTPUT, 216, 3, 0, 1000);
+			V3fn.new(); V3fn.set(OUTPUT, -3, 0, 3);
+			Make.buoyancyFGen(box, OUTPUT, 216, 3, 0, 1000);
+			V3fn.new(); V3fn.set(OUTPUT, 3, 0, -3);
+			Make.buoyancyFGen(box, OUTPUT, 216, 3, 0, 1000);
+			V3fn.new(); V3fn.set(OUTPUT, -3, 0, -3);
+			Make.buoyancyFGen(box, OUTPUT, 216, 3, 0, 1000);
+
+			Make.box(10, 3, 0, 6, 6, 6, -1);
+			box = OUTPUT;
+			RigidBody.linearDamping[box] = 0.98;
+			RigidBody.angularDamping[box] = 0.98;
+
+			V3fn.new(); V3fn.set(OUTPUT, 3, 0, 3);
+			Make.buoyancyFGen(box, OUTPUT, 216, 3, 0, 1000);
+			V3fn.new(); V3fn.set(OUTPUT, -3, 0, 3);
+			Make.buoyancyFGen(box, OUTPUT, 216, 3, 0, 1000);
+			V3fn.new(); V3fn.set(OUTPUT, 3, 0, -3);
+			Make.buoyancyFGen(box, OUTPUT, 216, 3, 0, 1000);
+			V3fn.new(); V3fn.set(OUTPUT, -3, 0, -3);
+			Make.buoyancyFGen(box, OUTPUT, 216, 3, 0, 1000);
+
+			Make.sphere(11, 7, 0.5, 0.5, 200);
+			box = OUTPUT;
+			RigidBody.linearDamping[box] = 0.98;
+			RigidBody.angularDamping[box] = 0.98;
+			V3fn.new(); V3fn.set(OUTPUT, 0, 0, 0);
+			Make.buoyancyFGen(box, OUTPUT, 250, 0.5, 0, 1000);
+
+			Make.sphere(8, 7, 2, 0.5, 200);
+			box = OUTPUT;
+			RigidBody.linearDamping[box] = 0.98;
+			RigidBody.angularDamping[box] = 0.98;
+			V3fn.new(); V3fn.set(OUTPUT, 0, 0, 0);
+			Make.buoyancyFGen(box, OUTPUT, 250, 0.5, 0, 1000);
+
+			Make.buoyancyFGen(player, V3fn.zero, 4, 1.6, 0, 1000);
+		}
+		if(selected == "baloons") {
+			Make.plane(0, 1, 0, 0);
+			makePlayer(0, 2, -20);
+			Make.box(4, 1.5, 3, 1, 1, 1, 50);
+			Make.box(-3, 1.5, -2, 1, 1, 2, 50);
+			Make.box(0, 0.5, 0, 10, 1, 10, -1);
+			let box = OUTPUT;
+			V3fn.new();
+			let up = OUTPUT;
+			V3fn.set(up, 2, 2, 0);
+
+			baloon(-4.5, 0.5, -4.5, box, up);
+			baloon(-4.5, 0.5, -4.5, box, up);
+			baloon(-4.5, 0.5, -4.5, box, up);
+			baloon(-4.5, 0.5, -4.5, box, up);
+
+			baloon( 4.5, 0.5, -4.5, box, up);
+			baloon( 4.5, 0.5, -4.5, box, up);
+			baloon( 4.5, 0.5, -4.5, box, up);
+			baloon( 4.5, 0.5, -4.5, box, up);
+
+			baloon(-4.5, 0.5,  4.5, box, up);
+			baloon(-4.5, 0.5,  4.5, box, up);
+			baloon(-4.5, 0.5,  4.5, box, up);
+			baloon(-4.5, 0.5,  4.5, box, up);
+
+			baloon( 4.5, 0.5,  4.5, box, up);
+			baloon( 4.5, 0.5,  4.5, box, up);
+			baloon( 4.5, 0.5,  4.5, box, up);
+			baloon( 4.5, 0.5,  4.5, box, up);
+		}
+		if(selected == "vehicle") {
+			Make.plane(0, 1, 0, 0);
+			makePlayer(0, 2, -20);
+			Make.box(0, 5, 0, 1, 1, 1, -1);
+			Make.box(1, 5, 2, 1, 1, 1, -1);
+			Make.box(2, 3, 50, 6, 6, 6, -1);
+			Make.box(-1, 4, 30, 0.5, 8, 0.5, -1);
+			Make.box(0, 3, 0, 3, 0.5, 8, -1);
+			let box = OUTPUT, sphere;
+			V3fn.new();
+			let dir1 = OUTPUT;
+			V3fn.set(dir1, 1, 0, 0);
+
+			Make.sphere(1.5, 1, 3.5, 1, -1); sphere = OUTPUT;
+			V3fn.new(); V3fn.set(OUTPUT, 1.5, -2, 3.5);
+			Make.hingeJoint(box, sphere, OUTPUT, V3fn.zero, dir1, dir1);
+			Make.motor(OUTPUT, 0, 5, 1);
+
+			Make.sphere(1.5, 1, -3.5, 1, -1); sphere = OUTPUT;
+			V3fn.new(); V3fn.set(OUTPUT, 1.5, -2, -3.5);
+			Make.hingeJoint(box, sphere, OUTPUT, V3fn.zero, dir1, dir1);
+			Make.motor(OUTPUT, 0, 5, 1);
+
+			Make.sphere(-1.5, 1, 3.5, 1, -1); sphere = OUTPUT;
+			V3fn.new(); V3fn.set(OUTPUT, -1.5, -2, 3.5);
+			Make.hingeJoint(box, sphere, OUTPUT, V3fn.zero, dir1, dir1);
+			Make.motor(OUTPUT, 0, 5, 1);
+
+			Make.sphere(-1.5, 1, -3.5, 1, -1); sphere = OUTPUT;
+			V3fn.new(); V3fn.set(OUTPUT, -1.5, -2, -3.5);
+			Make.hingeJoint(box, sphere, OUTPUT, V3fn.zero, dir1, dir1);
+			Make.motor(OUTPUT, 0, 5, 1);
+		}
+		if(selected == "gate") {
+			Make.plane(0, 1, 0, 0);
+			let ground = OUTPUT;
+			makePlayer(0, 2, -20);
+			Make.box(0, 15, 10, 10, 10, 1, 2);
+			let gate = OUTPUT;
+			V3fn.new();
+			let pt1 = OUTPUT;
+			V3fn.set(pt1, 0, 5, 10);
+			V3fn.new();
+			let dir = OUTPUT;
+			V3fn.set(dir, 0, 1, 0);
+			Make.sliderJoint(ground, gate, pt1, V3fn.zero, dir);
+			Make.box(0, 2.5, 0, 1, 4, 4, 2);
+			let opener = OUTPUT;
+			V3fn.new();
+			let pt2 = OUTPUT;
+			V3fn.set(pt2, 0, 2.5, 0);
+			Make.hingeJoint(ground, opener, pt2, V3fn.zero, dir, dir);
+			Make.sharedMotionJoint(opener, gate, V3fn.zero, dir, dir, V3fn.zero);
+			Make.box(5, 1, 0, 1, 1, 1, 20);
+			Make.box(0, 5, 15, 3, 5, 3, 10);
+		}
+		if(selected == "limits") {
+			Make.plane(0, 1, 0, 0);
+			let ground = OUTPUT;
+			makePlayer(-10, 2, 0);
+			Make.box(0, 1, 10, 3, 1, 3, -1); let box1 = OUTPUT;
+			V3fn.new(); let pt1 = OUTPUT; V3fn.set(pt1, 0, 1, 10);
+			V3fn.new(); let dir = OUTPUT; V3fn.set(dir, 1, 0, 0);
+			Make.sliderJoint(ground, box1, pt1, V3fn.zero, dir);
+			Make.limit(OUTPUT, 0, -10, 10);
+
+			Make.box(0, 4, 0, 4, 4, 1, 2); let box2 = OUTPUT;
+			V3fn.new(); pt1 = OUTPUT; V3fn.set(pt1, 2, 2.5, 0);
+			V3fn.new(); let pt2 = OUTPUT; V3fn.set(pt2, 2, 0, 0);
+			V3fn.new(); dir = OUTPUT; V3fn.set(dir, 0, 1, 0);
+			Make.hingeJoint(ground, box2, pt1, pt2, dir, dir);
+			Make.limit(OUTPUT, 0, -45, 45);
+
+
+			Make.box(15, 6, -4, 1, 2, 1, -1);
+			let box1 = OUTPUT;
+			RigidBody.makeImmovable(box1);
+			RigidBody.makeIrrotatable(box1);
+			RigidBody.acceleration[box1] = V3fn.zero;
+			Make.box(15, 3, -4, 1, 2, 1, -1);
+			let box2 = OUTPUT;
+			V3fn.new(); V3fn.set(OUTPUT, 0, -1.5, 0); let vec1 = OUTPUT;
+			V3fn.new(); V3fn.set(OUTPUT, 0,  1.5, 0); let vec2 = OUTPUT;
+			V3fn.new(); V3fn.set(OUTPUT, 1,    0, 0); let vec3 = OUTPUT;
+			V3fn.new(); V3fn.set(OUTPUT, 0,    0, 1); let vec4 = OUTPUT;
+			
+			Make.veryUniversalJoint(box1, box2, vec1, vec2, vec3, vec4);
+			Make.limit(OUTPUT, 2, -45, 45);
+		}
+		if(selected == "motors") {
+			Make.plane(0, 1, 0, 0);
+			let ground = OUTPUT;
+			makePlayer(-10, 2, 0);
+			Make.box(-20, 1, 10, 3, 1, 3, -1); let box1 = OUTPUT;
+			V3fn.new(); let pt1 = OUTPUT; V3fn.set(pt1, 0, 1, 10);
+			V3fn.new(); let dir = OUTPUT; V3fn.set(dir, 1, 0, 0);
+			Make.sliderJoint(ground, box1, pt1, V3fn.zero, dir);
+			Make.motor(OUTPUT, 0, 1, 0.1);
+
+			Make.box(-20, 1, 14, 3, 1, 3, -1); let box1 = OUTPUT;
+			V3fn.new(); pt1 = OUTPUT; V3fn.set(pt1, 0, 1, 14);
+			V3fn.new(); dir = OUTPUT; V3fn.set(dir, 1, 0, 0);
+			Make.sliderJoint(ground, box1, pt1, V3fn.zero, dir);
+			Make.motor(OUTPUT, 0, 1, 10);
+
+			Make.box(0, 4, 0, 4, 4, 1, 2); let box2 = OUTPUT;
+			V3fn.new(); pt1 = OUTPUT; V3fn.set(pt1, 2, 2.5, 0);
+			V3fn.new(); let pt2 = OUTPUT; V3fn.set(pt2, 2, 0, 0);
+			V3fn.new(); dir = OUTPUT; V3fn.set(dir, 0, 1, 0);
+			Make.hingeJoint(ground, box2, pt1, pt2, dir, dir);
+			Make.motor(OUTPUT, 0, 10, 1);
+		}
+		if(selected == "chain") {
+			Make.plane(0, 1, 0, 0);
+			makePlayer(0, 2, -10);
+			
+			let last = -1;
+			for(let i; 20) {
+				Make.box(i*3-30, 1, 0, 1, 1, 1, -1)
+				let box = OUTPUT;
+				if(last > -1) {
+					V3fn.new(); let pt1 = OUTPUT; V3fn.set(pt1, 1, 0, 0);
+					V3fn.new(); let pt2 = OUTPUT; V3fn.set(pt2, -1, 0, 0);
+					Make.ballAndSocketJoint(last, box, pt1, pt2);
+				}
+				last = box;
+			}
+		}
+		if(selected == "ragdoll") {
+			Make.plane(0, 1, 0, 0);
+			makePlayer(0, 2, -10);
+
+			let pt1, pt2, foot, legBottom, legTop, armBottom, armTop, body, head, up;
+			V3fn.new(); let dirX = OUTPUT; V3fn.set(dirX, 1, 0, 0);
+			V3fn.new(); let dirY = OUTPUT; V3fn.set(dirY, 0, 1, 0);
+			V3fn.new(); let dirZ = OUTPUT; V3fn.set(dirZ, 0, 0, 1);
+			V3fn.new(); let upAC = OUTPUT; V3fn.set(upAC, 0, 9, 0);
+
+			Make.box(0, 2.6, 0, 1, 1, 0.4, -1); body = OUTPUT;
+
+			Make.box(-0.3, 0.1, -0.2, 0.4, 0.2, 0.8, -1); foot = OUTPUT;
+			Make.box(-0.3, 0.7, 0, 0.4, 0.6, 0.4, -1); legBottom = OUTPUT;
+			Make.box(-0.3, 1.6, 0, 0.4, 0.6, 0.4, -1); legTop = OUTPUT;
+			V3fn.new(); pt1 = OUTPUT; V3fn.set(pt1, 0, 0.2, 0.2);
+			V3fn.new(); pt2 = OUTPUT; V3fn.set(pt2, 0, -0.4, 0);
+			Make.hingeJoint(foot, legBottom, pt1, pt2, dirX, dirX);
+			V3fn.new(); pt1 = OUTPUT; V3fn.set(pt1, 0, 0.45, 0);
+			V3fn.new(); pt2 = OUTPUT; V3fn.set(pt2, 0, -0.45, 0);
+			Make.hingeJoint(legBottom, legTop, pt1, pt2, dirX, dirX);
+			Make.limit(OUTPUT, 0, 0, 90);
+			V3fn.new(); pt1 = OUTPUT; V3fn.set(pt1, 0, 0.4, 0);
+			V3fn.new(); pt2 = OUTPUT; V3fn.set(pt2, -0.3, -0.6, 0);
+			Make.veryUniversalJoint(legTop, body, pt1, pt2, dirZ, dirX);
+			Make.limit(OUTPUT, 2, -10, 10);
+
+			Make.box( 0.3, 0.1, -0.2, 0.4, 0.2, 0.8, -1); foot = OUTPUT;
+			Make.box( 0.3, 0.7, 0, 0.4, 0.6, 0.4, -1); legBottom = OUTPUT;
+			Make.box( 0.3, 1.6, 0, 0.4, 0.6, 0.4, -1); legTop = OUTPUT;
+			V3fn.new(); pt1 = OUTPUT; V3fn.set(pt1, 0, 0.2, 0.2);
+			V3fn.new(); pt2 = OUTPUT; V3fn.set(pt2, 0, -0.4, 0);
+			Make.hingeJoint(foot, legBottom, pt1, pt2, dirX, dirX);
+			V3fn.new(); pt1 = OUTPUT; V3fn.set(pt1, 0, 0.45, 0);
+			V3fn.new(); pt2 = OUTPUT; V3fn.set(pt2, 0, -0.45, 0);
+			Make.hingeJoint(legBottom, legTop, pt1, pt2, dirX, dirX);
+			Make.limit(OUTPUT, 0, 0, 90);
+			V3fn.new(); pt1 = OUTPUT; V3fn.set(pt1, 0, 0.4, 0);
+			V3fn.new(); pt2 = OUTPUT; V3fn.set(pt2, 0.3, -0.6, 0);
+			Make.veryUniversalJoint(legTop, body, pt1, pt2, dirZ, dirX);
+			Make.limit(OUTPUT, 2, -10, 10);
+			
+
+			Make.box(-0.9, 0.7 + 1.2, 0, 0.4, 0.6, 0.4, -1); armBottom = OUTPUT;
+			Make.box(-0.9, 1.6 + 1.2, 0, 0.4, 0.6, 0.4, -1); armTop = OUTPUT;
+			V3fn.new(); pt1 = OUTPUT; V3fn.set(pt1, 0, 0.45, 0);
+			V3fn.new(); pt2 = OUTPUT; V3fn.set(pt2, 0, -0.45, 0);
+			Make.hingeJoint(armBottom, armTop, pt1, pt2, dirX, dirX);
+			Make.limit(OUTPUT, 0, -90, 0);
+			V3fn.new(); pt1 = OUTPUT; V3fn.set(pt1, 0.1, 0.1, 0);
+			V3fn.new(); pt2 = OUTPUT; V3fn.set(pt2, -0.8, 0.3, 0);
+			Make.ballAndSocketJoint(armTop, body, pt1, pt2);
+
+			Make.box( 0.9, 0.7 + 1.2, 0, 0.4, 0.6, 0.4, -1); armBottom = OUTPUT;
+			Make.box( 0.9, 1.6 + 1.2, 0, 0.4, 0.6, 0.4, -1); armTop = OUTPUT;
+			V3fn.new(); pt1 = OUTPUT; V3fn.set(pt1, 0, 0.45, 0);
+			V3fn.new(); pt2 = OUTPUT; V3fn.set(pt2, 0, -0.45, 0);
+			Make.hingeJoint(armBottom, armTop, pt1, pt2, dirX, dirX);
+			Make.limit(OUTPUT, 0, -90, 0);
+			V3fn.new(); pt1 = OUTPUT; V3fn.set(pt1, -0.1, 0.1, 0);
+			V3fn.new(); pt2 = OUTPUT; V3fn.set(pt2, 0.8, 0.3, 0);
+			Make.ballAndSocketJoint(armTop, body, pt1, pt2);
+
+			Make.box(0, 3.6, 0, 0.6, 0.6, 0.6, -1); head = OUTPUT;
+			V3fn.new(); pt1 = OUTPUT; V3fn.set(pt1, 0, -0.4, 0);
+			V3fn.new(); pt2 = OUTPUT; V3fn.set(pt2, 0, 0.6, 0);
+			Make.veryUniversalJoint(head, body, pt1, pt2, dirX, dirZ);
+			Make.limit(OUTPUT, 0, -80, 10);
+			Make.limit(OUTPUT, 1, -20, 20);
+			Make.limit(OUTPUT, 2, -80, 80);
+			RigidBody.acceleration[head] = upAC;
+			RigidBody.inverseMass[head] = 1;
+		}
+		if(selected == "cloth") {
+			Make.plane(0, 1, 0, 0);
+			makePlayer(0, 2, -10);
+			lst layer = [];
+			for(let y; 10) {
+				for(let x; 10) {
+					Make.sphere(x*0.4 - 2, 5 - y*0.4, 0, 0.05, -1);
+					RigidBody.makeIrrotatable(OUTPUT);
+					layer.push(OUTPUT);
+					if(y == 1) {
+						RigidBody.makeImmovable(OUTPUT);
+						RigidBody.acceleration[OUTPUT] = V3fn.zero;
+					}
+					if(x > 1) {
+						Make.centerDistanceJoint(layer[layer.length-1], layer[layer.length], 0.4);
+					}
+					if(layer.length > 10) {
+						Make.centerDistanceJoint(layer[layer.length-10], layer[layer.length], 0.4);
+					}
+				}
+			}
+		}
+		if(selected == "wall") {
+			Make.plane(0, 1, 0, 0);
+			makePlayer(0, 2, -10);
+			for(let y; 5) {
+				for(let x; 5) {
+					let offset;
+					if(y % 2 == 0) {
+						offset = 9;
+					} else {
+						offset = 11;
+					}
+					Make.box(x*4 - offset, y*2 - 1, 0, 4, 2, 4, -1);
+				}
+			}
+			Make.box(0, 10, 10, 1, 20, 0.25, 100);
+		}
+	}
+	function tick() {
+		sal Vector3 zero, gravity; // Ugly workaround while there is still no global sal
+		Renderer.controls2();
+		dots.clear();
+		World.stepPhysics(1/60);
+		Renderer.render();
+
+		if(Sensing.keyDown("q")) {
+			if(qPressed == 0) {
+				qPressed = 1;
+				onQPress();
+			}
+		} else {
+			qPressed = 0;
+		}
+	}
+	function onQPress() {
+		if(selected == "tower") {
+			Make.sphere(-100, 10, 0, 1, 20);
+			V3fn.set(RigidBody.velocity[OUTPUT], 50, 14 + Math.random(-2.9, 2.9), Math.random(-1.25, 1.25));
+		}
+		if(selected == "buoyancy") {
+			Make.sphere(5, 10, -80, 1, 30);
+			V3fn.set(RigidBody.velocity[OUTPUT], Math.random(-2.8, 2.8), 8 + Math.random(-2.9, 2.9), 100);
+			RigidBody.linearDamping[OUTPUT] = 0.98;
+			RigidBody.angularDamping[OUTPUT] = 0.98;
+			Make.buoyancyFGen(OUTPUT, V3fn.zero, 30, 0.5, 0, 1000);
+		}
+	}
+	function makePlayer(x, y, z) {
+		Make.capsule(x, y, z, 0.6, 1.6, -1);
+		sal Vector3 temp;
+		V3fn.set(temp, 0,0,1);
+		QTfn.rotateByScaledVector(RigidBody.orientation[OUTPUT], temp, 2);
+		RigidBody.makeIrrotatable(OUTPUT);
+		RigidBody.linearDamping[OUTPUT] = 0.983;
+		RigidBody.angularDamping[OUTPUT] = 0.983;
+		player = OUTPUT;
+	}
+
+	function baloon(x, y, z, box, up) {
+		Make.capsule(x+Math.random(-2,2), 10, z+Math.random(-2,2), 2, 2, -1);
+		let baloon = OUTPUT;
+		sal Vector3 temp;
+		V3fn.set(temp, 0,0,1);
+		QTfn.rotateByScaledVector(RigidBody.orientation[baloon], temp, 2);
+		RigidBody.acceleration[baloon] = up;
+		RigidBody.linearDamping[baloon] = 0.983;
+		RigidBody.angularDamping[baloon] = 0.983;
+
+		V3fn.new();
+		V3fn.set(OUTPUT, x, y, z);
+		let pt1 = OUTPUT;
+
+		V3fn.new();
+		V3fn.set(OUTPUT, -2, 0, 0);
+		let pt2 = OUTPUT;
+
+		Make.spring(box, baloon, pt1, pt2, 10, 10, 1, 1);
+	}
+
+	function chair(x, y, z) {
+		RigidBody.new();
+		let body = OUTPUT, last;
+		V3fn.set(RigidBody.position[body], x, y, z);
+		RigidBody.inverseMass[body] = 1 / 0.093;
+		RigidBody.calculateDerivedData(body);
+		V3fn.new();
+		V3fn.set(OUTPUT, 0.3, 0.05, 0.3);
+		Collider.new(body, 1, OUTPUT, 0, -1);
+		last = OUTPUT;
+		Matrix4[Collider.matrix[last]]#y = -0.01; // - 0.06
+		Matrix4[Collider.matrix[last]]#z = -0.2;
+
+		V3fn.new();
+		V3fn.set(OUTPUT, 0.05, 0.3, 0.05);
+		Collider.new(body, 1, OUTPUT, 0, last);
+		last = OUTPUT;
+		Matrix4[Collider.matrix[last]]#y = -0.36;
+		Matrix4[Collider.matrix[last]]#x = 0.25;
+		Matrix4[Collider.matrix[last]]#z = 0.05;
+
+		V3fn.new();
+		V3fn.set(OUTPUT, 0.05, 0.3, 0.05);
+		Collider.new(body, 1, OUTPUT, 0, last);
+		last = OUTPUT;
+		Matrix4[Collider.matrix[last]]#y = -0.36;
+		Matrix4[Collider.matrix[last]]#x = -0.25;
+		Matrix4[Collider.matrix[last]]#z = 0.05;
+
+		V3fn.new();
+		V3fn.set(OUTPUT, 0.05, 0.3, 0.05);
+		Collider.new(body, 1, OUTPUT, 0, last);
+		last = OUTPUT;
+		Matrix4[Collider.matrix[last]]#y = -0.36;
+		Matrix4[Collider.matrix[last]]#x = 0.25;
+		Matrix4[Collider.matrix[last]]#z = -0.45;
+
+		V3fn.new();
+		V3fn.set(OUTPUT, 0.05, 0.3, 0.05);
+		Collider.new(body, 1, OUTPUT, 0, last);
+		last = OUTPUT;
+		Matrix4[Collider.matrix[last]]#y = -0.36;
+		Matrix4[Collider.matrix[last]]#x = -0.25;
+		Matrix4[Collider.matrix[last]]#z = -0.45;
+
+		V3fn.new();
+		V3fn.set(OUTPUT, 0.3, 0.3, 0.05);
+		Collider.new(body, 1, OUTPUT, 0, last);
+		last = OUTPUT;
+		Matrix4[Collider.matrix[last]]#y = 0.29;
+		Matrix4[Collider.matrix[last]]#x = 0;
+		Matrix4[Collider.matrix[last]]#z = 0.05; // - 0.2
+
+		RigidBody.collider[body] = last;
+		RigidBody.calculateInertiaTensor(body);
+		World.bodies.push(body);
+		OUTPUT = body;
+	}
+}
+
+function dot(vec) {
+	dots.push(Vector3[vec]#x, Vector3[vec]#y, Vector3[vec]#z);
+}
+function line(vec1, vec2) {
+	let i = 0;
+	repeat(6) {
+		dots.push(Vector3[vec1]#x * (1-i) + Vector3[vec2]#x * i, Vector3[vec1]#y * (1-i) + Vector3[vec2]#y * i, Vector3[vec1]#z * (1-i) + Vector3[vec2]#z * i);
+		i += 0.2;
+	}
+}

@@ -6,7 +6,6 @@ namespace World {
 	variable solver;
 
 	function stepPhysics(duration) {
-		sal Vector3 zero, gravity; // Ugly workaround while there is still no global sal
 		World.duration = duration;
 
 		ForceGenerators.run();
@@ -41,9 +40,9 @@ namespace World {
 		}
 		ConstraintGenerators.run();
 
-		//ConstraintResolver.resolveConstraints();
-		ConstraintResolver.resolveConstraintsRandomized();
-		//ConstraintResolver.resolveConstraintsAdvanced();
+		if(solver == 0) ConstraintResolver.resolveConstraints();
+		if(solver == 1) ConstraintResolver.resolveConstraintsRandomized();
+		if(solver == 2) ConstraintResolver.resolveConstraintsAdvanced();
 
 		for(let i; Constraint.J.length) {
 			V3fn.delete(Constraint.J[i]);
@@ -55,7 +54,6 @@ namespace World {
 	}
 
 	function resetAll() {
-		infinity = 1/0;
 		bodies.clear();
 		RigidBody.clearAll();
 		Vector3.clear();
