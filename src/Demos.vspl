@@ -9,6 +9,7 @@ function dot(vec) {
 namespace Demos {
 	variable selected;
 	variable qPressed;
+	variable upAC;
 
 	function whenFlagClicked() {
 		infinity = 1 / 0;
@@ -23,7 +24,7 @@ namespace Demos {
 		}
 	}
 	function load() {
-		selected = "wall";
+		selected = "ragdoll";
 
 		World.resetAll();
 		sal Vector3 zero, gravity;
@@ -331,7 +332,7 @@ namespace Demos {
 			V3fn.new(); let dirX = OUTPUT; V3fn.set(dirX, 1, 0, 0);
 			V3fn.new(); let dirY = OUTPUT; V3fn.set(dirY, 0, 1, 0);
 			V3fn.new(); let dirZ = OUTPUT; V3fn.set(dirZ, 0, 0, 1);
-			V3fn.new(); let upAC = OUTPUT; V3fn.set(upAC, 0, 9, 0);
+			V3fn.new();     upAC = OUTPUT; V3fn.set(upAC, 0, 9, 0);
 
 			Make.box(0, 2.6, 0, 1, 1, 0.4, -1); body = OUTPUT;
 
@@ -341,6 +342,7 @@ namespace Demos {
 			V3fn.new(); pt1 = OUTPUT; V3fn.set(pt1, 0, 0.2, 0.2);
 			V3fn.new(); pt2 = OUTPUT; V3fn.set(pt2, 0, -0.4, 0);
 			Make.hingeJoint(foot, legBottom, pt1, pt2, dirX, dirX);
+			Make.limit(OUTPUT, 0, -45, 45);
 			V3fn.new(); pt1 = OUTPUT; V3fn.set(pt1, 0, 0.45, 0);
 			V3fn.new(); pt2 = OUTPUT; V3fn.set(pt2, 0, -0.45, 0);
 			Make.hingeJoint(legBottom, legTop, pt1, pt2, dirX, dirX);
@@ -356,6 +358,7 @@ namespace Demos {
 			V3fn.new(); pt1 = OUTPUT; V3fn.set(pt1, 0, 0.2, 0.2);
 			V3fn.new(); pt2 = OUTPUT; V3fn.set(pt2, 0, -0.4, 0);
 			Make.hingeJoint(foot, legBottom, pt1, pt2, dirX, dirX);
+			Make.limit(OUTPUT, 0, -45, 45);
 			V3fn.new(); pt1 = OUTPUT; V3fn.set(pt1, 0, 0.45, 0);
 			V3fn.new(); pt2 = OUTPUT; V3fn.set(pt2, 0, -0.45, 0);
 			Make.hingeJoint(legBottom, legTop, pt1, pt2, dirX, dirX);
@@ -463,9 +466,12 @@ namespace Demos {
 			RigidBody.angularDamping[OUTPUT] = 0.98;
 			Make.buoyancyFGen(OUTPUT, V3fn.zero, 30, 0.5, 0, 1000);
 		}
+		if(selected == "ragdoll") {
+			V3fn.set(upAC, 0, 9-Vector3[upAC]#y, 0);
+		}
 	}
 	function makePlayer(x, y, z) {
-		Make.capsule(x, y, z, 0.6, 1.6, -1);
+		Make.capsule(x, y, z, 0.6, 0.8, 2.714);
 		sal Vector3 temp;
 		V3fn.set(temp, 0,0,1);
 		QTfn.rotateByScaledVector(RigidBody.orientation[OUTPUT], temp, 2);

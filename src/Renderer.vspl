@@ -14,7 +14,7 @@ namespace Renderer {
 		if(Sensing.keyDown("space")) Vector3[pv]#y = 5;
 		pv = RigidBody.position[player];
 		camX = Vector3[pv]#x;
-		camY = Vector3[pv]#y;
+		camY = Vector3[pv]#y + 0.8;
 		camZ = Vector3[pv]#z;
 	}
 	function controls1() {
